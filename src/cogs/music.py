@@ -169,7 +169,7 @@ class MusicCog(commands.Cog):
     """Music playback commands and queue management."""
     
     FFMPEG_OPTIONS = {
-        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin",
         "options": "-vn",
     }
     IDLE_TIMEOUT = 300  # 5 minutes
@@ -224,7 +224,7 @@ class MusicCog(commands.Cog):
         # Connect to voice channel if not already
         if not player.voice_client or not player.voice_client.is_connected():
             try:
-                player.voice_client = await voice_channel.connect()
+                player.voice_client = await voice_channel.connect(self_deaf=True, timeout=20.0)
                 logger.info(f"Connected to {voice_channel.name} in {interaction.guild.name}")
             except Exception as e:
                 await interaction.followup.send(f"❌ Failed to connect: {e}", ephemeral=True)
@@ -315,7 +315,7 @@ class MusicCog(commands.Cog):
         # Connect to voice channel if not already
         if not player.voice_client or not player.voice_client.is_connected():
             try:
-                player.voice_client = await voice_channel.connect()
+                player.voice_client = await voice_channel.connect(self_deaf=True, timeout=20.0)
             except Exception as e:
                 await interaction.followup.send(f"❌ Failed to connect: {e}", ephemeral=True)
                 return
@@ -430,7 +430,7 @@ class MusicCog(commands.Cog):
         # Connect to voice channel
         if not player.voice_client or not player.voice_client.is_connected():
             try:
-                player.voice_client = await voice_channel.connect()
+                player.voice_client = await voice_channel.connect(self_deaf=True, timeout=20.0)
             except Exception as e:
                 await interaction.followup.send(f"❌ Failed to connect: {e}", ephemeral=True)
                 return
