@@ -19,9 +19,6 @@ aiohttp>=3.9.0
 # Configuration
 python-dotenv>=1.0.0
 
-# Encryption (for future auth features if needed)
-cryptography>=41.0.0
-
 # Audio processing (PyNaCl is required for voice)
 PyNaCl>=1.5.0
 psutil>=5.9.0

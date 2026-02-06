@@ -41,6 +41,18 @@ class DatabaseManager:
                 logger.info("Database schema initialized")
             else:
                 logger.warning(f"Schema file not found: {schema_path}")
+            
+            # Automatic Migrations
+            # 1. Add is_ephemeral to songs if missing
+            try:
+                await db.execute("SELECT is_ephemeral FROM songs LIMIT 1")
+            except Exception:
+                logger.info("Migrating: Adding is_ephemeral column to songs table")
+                try:
+                    await db.execute("ALTER TABLE songs ADD COLUMN is_ephemeral BOOLEAN DEFAULT 0")
+                    await db.commit()
+                except Exception as e:
+                    logger.error(f"Migration failed: {e}")
     
     @asynccontextmanager
     async def connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:

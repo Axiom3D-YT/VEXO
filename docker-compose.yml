@@ -21,8 +21,8 @@ services:
       # Optional: Mount cookies file
       # - ./cookies.txt:/app/data/cookies.txt:ro
     ports:
-      # Only expose on localhost - dashboard is NOT meant for public access
-      - "127.0.0.1:8080:8080"
+      # Dashboard accessible on port 6767
+      - "6767:8080"
     healthcheck:
       test: [ "CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()" ]
       interval: 30s
