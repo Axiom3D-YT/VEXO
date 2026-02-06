@@ -410,7 +410,15 @@ class MusicCog(commands.Cog):
     @play_group.command(name="any", description="Start playing with discovery mode")
     async def play_any(self, interaction: discord.Interaction):
         """Start discovery playback without a specific song."""
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except discord.NotFound:
+            # Interaction might have expired or been acknowledged already, just log and continue if possible or return
+            logger.warning("Interaction expired (404) in play_any")
+            return
+        except Exception as e:
+            logger.error(f"Failed to defer interaction: {e}")
+            return
         
         if not interaction.user.voice:
             await interaction.followup.send("❌ You need to be in a voice channel!", ephemeral=True)
