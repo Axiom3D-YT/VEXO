@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import discord
+from datetime import datetime, UTC
 from discord.ext import commands
 
 # Setup logging
@@ -46,7 +47,6 @@ class MusicBot(commands.Bot):
         logger.info("Setting up bot...")
         
         # Store start time for uptime tracking
-        from datetime import datetime, UTC
         self._start_time = datetime.now(UTC)
         
         # Initialize database
