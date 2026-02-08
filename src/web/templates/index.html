@@ -298,6 +298,32 @@
                                     If the bot is in more servers than this limit, it will auto-leave new joins.
                                 </div>
                             </div>
+
+                            <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
+                            <div class="form-group"
+                                style="display: flex; align-items: center; justify-content: space-between;">
+                                <div>
+                                    <label class="form-label" style="color: var(--warning); font-weight: 700;">⚠️ Test
+                                        Mode</label>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                        Every song will be limited to a fixed duration for stress testing.
+                                        <strong>Global setting!</strong>
+                                    </div>
+                                </div>
+                                <div>
+                                    <input type="checkbox" id="setting-test-mode" style="transform: scale(1.5);">
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-top: 1.5rem;">
+                                <label class="form-label">Test Mode Playback Duration (Seconds)</label>
+                                <input type="number" id="setting-test-duration" class="form-input"
+                                    placeholder="Default: 30" min="5" max="300" style="max-width: 300px;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+                                    How long to play each song before skipping (default: 30).
+                                </div>
+                            </div>
                             <div style="margin-top: 2rem;">
                                 <button class="btn btn-primary" onclick="saveSettingsTab()">Save Global
                                     Settings</button>

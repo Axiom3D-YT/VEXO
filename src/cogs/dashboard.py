@@ -26,9 +26,23 @@ class WebSocketLogHandler(logging.Handler):
         super().__init__()
         self.ws_manager = ws_manager
         self.loop = loop
+        self._last_emit = 0
+        self._count_this_second = 0
     
     def emit(self, record):
         if self.ws_manager.clients:
+            # Rate limiting for Pi 3: Max 10 logs per second to the web dashboard
+            import time
+            now = time.time()
+            if int(now) == int(self._last_emit):
+                self._count_this_second += 1
+            else:
+                self._count_this_second = 1
+                self._last_emit = now
+            
+            if self._count_this_second > 10:
+                return # Drop log burst to prevent event loop starvation
+                
             try:
                 log_entry = {
                     "timestamp": record.created,
@@ -52,7 +66,6 @@ class WebSocketLogHandler(logging.Handler):
                         self.loop
                     )
             except Exception:
-                # Prevent recursive logging loops if logging fails
                 pass
 
 
@@ -176,19 +189,6 @@ class DashboardCog(commands.Cog):
                 if player.current.for_user_id:
                     user = self.bot.get_user(player.current.for_user_id)
                     data["for_user"] = user.display_name if user else str(player.current.for_user_id)
-                
-                # Fetch detailed interaction stats for current song
-                if hasattr(self.bot, "db") and player.current.song_db_id:
-                    stats = await self.bot.db.fetch_one("""
-                        SELECT 
-                            (SELECT GROUP_CONCAT(DISTINCT u.username) FROM playback_history ph JOIN users u ON ph.for_user_id = u.id WHERE ph.song_id = ? AND ph.discovery_source = "user_request") as requested_by,
-                            (SELECT GROUP_CONCAT(DISTINCT u.username) FROM song_reactions sr JOIN users u ON sr.user_id = u.id WHERE sr.song_id = ? AND sr.reaction = 'like') as liked_by,
-                            (SELECT GROUP_CONCAT(DISTINCT u.username) FROM song_reactions sr JOIN users u ON sr.user_id = u.id WHERE sr.song_id = ? AND sr.reaction = 'dislike') as disliked_by
-                    """, (player.current.song_db_id, player.current.song_db_id, player.current.song_db_id))
-                    if stats:
-                        data["requested_by"] = stats["requested_by"]
-                        data["liked_by"] = stats["liked_by"]
-                        data["disliked_by"] = stats["disliked_by"]
             guilds.append(data)
         return web.json_response({"guilds": guilds})
     
@@ -440,7 +440,14 @@ class DashboardCog(commands.Cog):
             return web.json_response({"status": "ok"})
         else:
             limit = await crud.get_global_setting("max_concurrent_servers")
-            return web.json_response({"max_concurrent_servers": limit})
+            test_mode = await crud.get_global_setting("test_mode")
+            test_duration = await crud.get_global_setting("playback_duration")
+            
+            return web.json_response({
+                "max_concurrent_servers": limit,
+                "test_mode": test_mode,
+                "playback_duration": test_duration or 30
+            })
 
     async def _handle_notifications(self, request: web.Request) -> web.Response:
         """Get notifications."""

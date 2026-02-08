@@ -31,14 +31,18 @@ class DatabaseManager:
         """Initialize the database with schema."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
-        async with self.connection() as db:
+        async with aiosqlite.connect(self.db_path) as db:
+            # Enable WAL mode for better concurrency on slow storage (Pi 3)
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA synchronous=NORMAL")
+            
             # Read and execute schema
             schema_path = Path(__file__).parent / "migrations" / "init_schema.sql"
             if schema_path.exists():
                 schema = schema_path.read_text()
                 await db.executescript(schema)
                 await db.commit()
-                logger.info("Database schema initialized")
+                logger.info("Database schema initialized with WAL mode")
             else:
                 logger.warning(f"Schema file not found: {schema_path}")
             
@@ -56,20 +60,23 @@ class DatabaseManager:
     
     @asynccontextmanager
     async def connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
-        """Get a database connection with automatic transaction handling."""
-        async with self._lock:
-            if self._connection is None:
-                self._connection = await aiosqlite.connect(self.db_path)
-                self._connection.row_factory = aiosqlite.Row
-                # Enable foreign keys
-                await self._connection.execute("PRAGMA foreign_keys = ON")
-            
-            try:
-                yield self._connection
-            except Exception:
-                await self._connection.rollback()
-                raise
-    
+        """Get a database connection."""
+        # Removed global self._lock. sqlite3 (and aiosqlite) handles its own 
+        # internal locking. Removing the asyncio.Lock prevents the dashboard 
+        # from blocking the bot's commands during heavy reads.
+        if self._connection is None:
+            self._connection = await aiosqlite.connect(self.db_path)
+            self._connection.row_factory = aiosqlite.Row
+            # Enable persistent PRAGMAs
+            await self._connection.execute("PRAGMA foreign_keys = ON")
+            await self._connection.execute("PRAGMA journal_mode=WAL")
+        
+        try:
+            yield self._connection
+        except Exception:
+            await self._connection.rollback()
+            raise
+
     async def execute(self, query: str, params: tuple = ()) -> aiosqlite.Cursor:
         """Execute a query and return the cursor."""
         async with self.connection() as db:

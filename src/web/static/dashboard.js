@@ -35,7 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchGuilds, 10000);
     setInterval(fetchAnalytics, 15000);
     setInterval(fetchSongs, 30000);
-    setInterval(fetchLibrary, 30000);
     setInterval(fetchNotifications, 15000);
 
     // Tab handling
@@ -497,8 +496,15 @@ async function loadSettingsTab() {
         try {
             const res = await fetch(API.settings_global);
             const data = await res.json();
-            const el = document.getElementById('setting-max-servers-tab');
-            if (el) el.value = data.max_concurrent_servers || '';
+
+            const elMax = document.getElementById('setting-max-servers-tab');
+            if (elMax) elMax.value = data.max_concurrent_servers || '';
+
+            const elTest = document.getElementById('setting-test-mode');
+            if (elTest) elTest.checked = !!data.test_mode;
+
+            const elDur = document.getElementById('setting-test-duration');
+            if (elDur) elDur.value = data.playback_duration || 30;
         } catch (e) {
             console.error(e);
         }
@@ -589,13 +595,17 @@ async function saveServerSettings() {
 
 async function saveSettingsTab() {
     const maxServers = document.getElementById('setting-max-servers-tab').value;
+    const testMode = document.getElementById('setting-test-mode').checked;
+    const testDuration = document.getElementById('setting-test-duration').value;
 
     try {
         const res = await fetch(API.settings_global, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                max_concurrent_servers: parseInt(maxServers)
+                max_concurrent_servers: maxServers ? parseInt(maxServers) : null,
+                test_mode: testMode,
+                playback_duration: testDuration ? parseInt(testDuration) : 30
             })
         });
 

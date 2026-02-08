@@ -804,27 +804,57 @@ class MusicCog(commands.Cog):
                     log_user = f"User:{item.for_user_id}" if item.for_user_id else f"Requester:{item.requester_id}"
                     log_source = f"{item.discovery_source} ({item.discovery_reason})" if item.discovery_reason else item.discovery_source
                     logger.info(f"Playing: {item.title} | {item.artist} | {item.genre or 'Unknown Genre'} | {log_user} | {log_source}")
-                    
                     # Send Now Playing embed
                     await self._send_now_playing(player)
                     
-                    # Wait for song to finish
-                    await play_complete.wait()
-                    
+                    # ---------------- PLAYBACK WATCHDOG ----------------
+                    test_mode = False
+                    test_duration = 30
+                    if hasattr(self.bot, "db") and self.bot.db:
+                        try:
+                            from src.database.crud import SystemCRUD
+                            system_crud = SystemCRUD(self.bot.db)
+                            test_mode = await system_crud.get_global_setting("test_mode")
+                            test_duration = await system_crud.get_global_setting("playback_duration") or 30
+                        except Exception as e:
+                            logger.error(f"Failed to fetch test mode settings: {e}")
+
+                    # Calculate safety timeout: Test duration OR (Song duration + 20s buffer)
+                    if test_mode:
+                        timeout_duration = float(test_duration)
+                    else:
+                        # Default to 10 mins if duration is unknown
+                        timeout_duration = float(item.duration_seconds or 600) + 20
+
+                    # Wait for song to finish (or timeout via Watchdog)
+                    try:
+                        if test_mode:
+                            logger.info(f"TEST MODE ACTIVE: playing for {timeout_duration}s")
+                        
+                        await asyncio.wait_for(play_complete.wait(), timeout=timeout_duration)
+                    except asyncio.TimeoutError:
+                        if test_mode:
+                            logger.info(f"TEST MODE: Time limit reached ({timeout_duration}s), skipping...")
+                        else:
+                            logger.warning(f"WATCHDOG: Song {item.title} timed out after {timeout_duration}s. Recovering event loop...")
+                        
+                        if player.voice_client and player.voice_client.is_playing():
+                            player.voice_client.stop()
+                        
+                        # Wait a tiny bit for after_play to trigger and play_complete to set
+                        try:
+                            await asyncio.wait_for(play_complete.wait(), timeout=1.0)
+                        except: pass
+                    # ---------------------------------------------------
+
                     # Database: Log Playback End
                     if hasattr(self.bot, "db") and self.bot.db and item.history_id:
                          try:
                              playback_crud = PlaybackCRUD(self.bot.db)
-                             # Default true unless skipped (we can check skip_votes or logic later, but for now assumption is valid if we reached here without break)
-                             # If skipping happens, strict logic is needed, but 'completed' usually means 'finished playing' or 'was played'. 
-                             # Here we mark it completed. If skipped, we might want to update it differently, but mark_completed takes a bool.
-                             # If we were skipped, the wait() is broken? No, stop() calls after_play.
-                             # So we check if we were stopped forcefully. 
-                             # For simplicity, we mark completed=True. Refinement: if queue was cleared or force skipped?
-                             # Let's assume True for now, user analytics usually count partial plays too.
+                             # If we were in test mode and timed out, it's NOT a full completion in normal sense but fine for analytics
                              completed = True
                              
-                             # Check if skipped via votes (rough check)
+                             # Check if skipped via votes
                              if player.skip_votes and len(player.skip_votes) > 0:
                                  completed = False
                                  
@@ -992,26 +1022,6 @@ class MusicCog(commands.Cog):
             
             embed.set_thumbnail(url=f"https://img.youtube.com/vi/{item.video_id}/hqdefault.jpg")
             
-            # Add Interaction Stats (Who requested, liked, disliked)
-            if hasattr(self.bot, "db") and item.song_db_id:
-                try:
-                    stats = await self.bot.db.fetch_one("""
-                        SELECT 
-                            (SELECT GROUP_CONCAT(DISTINCT u.username) FROM playback_history ph JOIN users u ON ph.for_user_id = u.id WHERE ph.song_id = ? AND ph.discovery_source = "user_request") as requested_by,
-                            (SELECT GROUP_CONCAT(DISTINCT u.username) FROM song_reactions sr JOIN users u ON sr.song_id = ? AND sr.reaction = 'like') as liked_by,
-                            (SELECT GROUP_CONCAT(DISTINCT u.username) FROM song_reactions sr JOIN users u ON sr.user_id = u.id WHERE sr.song_id = ? AND sr.reaction = 'dislike') as disliked_by
-                    """, (item.song_db_id, item.song_db_id, item.song_db_id))
-                    
-                    if stats:
-                        if stats["requested_by"]:
-                            embed.add_field(name="📨 Requested By", value=stats["requested_by"], inline=False)
-                        if stats["liked_by"]:
-                            embed.add_field(name="❤️ Liked By", value=stats["liked_by"], inline=False)
-                        if stats["disliked_by"]:
-                            embed.add_field(name="👎 Disliked By", value=stats["disliked_by"], inline=False)
-                except Exception as e:
-                    logger.debug(f"Failed to fetch interaction stats for embed: {e}")
-
             embed.add_field(name="📜 Queue", value=f"{player.queue.qsize()} songs", inline=True)
             yt_url = f"https://youtube.com/watch?v={item.video_id}"
             embed.add_field(name="🔗 Link", value=f"[YouTube]({yt_url})", inline=True)
