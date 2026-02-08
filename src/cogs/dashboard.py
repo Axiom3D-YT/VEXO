@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from collections import deque
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 
 from aiohttp import web
