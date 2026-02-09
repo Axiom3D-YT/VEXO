@@ -1052,7 +1052,8 @@ class MusicCog(commands.Cog):
             
             # ⏭️ NEXT SONG DETAILS
             if not player.queue.empty():
-                next_item = list(player.queue._queue)[0]
+                # PriorityQueue stores (priority, counter, item)
+                _, _, next_item = list(player.queue._queue)[0]
                 
                 # Format next duration
                 next_dur_str = "Unknown"
@@ -1136,7 +1137,8 @@ class MusicCog(commands.Cog):
             # Only do this if pre_buffer setting is on, OR if we just added it to an empty queue as discovery
             if not player.queue.empty():
                 # Peek at next item without removing
-                next_item = list(player.queue._queue)[0]
+                # PriorityQueue stores (priority, counter, item)
+                _, _, next_item = list(player.queue._queue)[0]
                 
                 if not next_item.url:
                     # We always extract for the direct next song if it was a discovery item
