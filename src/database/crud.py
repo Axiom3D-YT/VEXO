@@ -805,6 +805,7 @@ class AnalyticsCRUD:
         stats["total_tracks"] = tracks_info["total_tracks"] if tracks_info else 0
         stats["total_seconds"] = real_duration
         stats["unique_listeners"] = session_info["unique_listeners"] if session_info else 0
+        stats["last_message_id"] = session_info["last_message_id"] if session_info else None
         
         # 2. Top Artist
         query_artist = """

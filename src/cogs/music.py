@@ -523,7 +523,11 @@ class MusicCog(commands.Cog):
             asyncio.create_task(self._play_loop(player))
         
         duration = await self._get_ephemeral_duration(interaction.guild_id)
-        await interaction.followup.send(f"🎲 **Discovery mode activated!** Finding songs for you...", delete_after=duration)
+        msg = await interaction.followup.send(f"🎲 **Discovery mode activated!** Finding songs for you...")
+        if msg and duration > 0:
+            try:
+                await msg.delete(delay=duration)
+            except: pass
     
     @app_commands.command(name="pause", description="Pause the current song")
     async def pause(self, interaction: discord.Interaction):
