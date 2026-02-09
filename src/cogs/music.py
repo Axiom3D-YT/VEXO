@@ -652,17 +652,16 @@ class MusicCog(commands.Cog):
                 player.skip_votes.clear()
                 # Get next from priority queue
                 try:
-                    # priority, counter, item = await player.queue.get()
-                    _, _, item = await player.queue.get()
-                    player.current = item
+                    # PriorityQueue returns (priority, counter, item)
+                    _, _, item = player.queue.get_nowait()
                 except asyncio.QueueEmpty:
-                    # If queue is empty, trigger emergency sequential discovery
+                    # If queue is empty, trigger emergency discovery
                     # (This handles the very first play or if prep failed)
                     await self._prepare_next_song(player)
                     try:
                         _, _, item = player.queue.get_nowait()
-                        player.current = item
                     except asyncio.QueueEmpty:
+                        player.is_playing = False
                         break # Truly nothing available
                 
                 player.current = item
