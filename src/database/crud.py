@@ -764,13 +764,24 @@ class AnalyticsCRUD:
                 s_at = session_info["started_at"]
                 e_at = session_info["ended_at"]
                 
+                # Convert strings to datetime
                 if isinstance(s_at, str):
-                    s_at = datetime.fromisoformat(s_at.replace('Z', '+00:00'))
+                    # SQLite stores as 'YYYY-MM-DD HH:MM:SS'
+                    s_at = datetime.fromisoformat(s_at.replace(' ', 'T'))
                 if isinstance(e_at, str):
-                    e_at = datetime.fromisoformat(e_at.replace('Z', '+00:00'))
+                    e_at = datetime.fromisoformat(e_at.replace(' ', 'T'))
+                
+                # Ensure both are offset-aware for subtraction
+                if s_at.tzinfo is None:
+                    s_at = s_at.replace(tzinfo=UTC)
+                if e_at.tzinfo is None:
+                    e_at = e_at.replace(tzinfo=UTC)
                 
                 real_duration = int((e_at - s_at).total_seconds())
-            except Exception:
+            except Exception as e:
+                # Log error but keep 0
+                import logging
+                logging.getLogger(__name__).error(f"Error calculating session duration: {e}")
                 pass
         
         # 1. Track stats

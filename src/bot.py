@@ -133,8 +133,17 @@ class MusicBot(commands.Bot):
             stale_sessions = await playback_crud.get_stale_sessions()
             if stale_sessions:
                 logger.info(f"Found {len(stale_sessions)} stale sessions. Cleaning up...")
+                
+                # Get MusicCog for sending recaps
+                music_cog = self.get_cog("MusicCog")
+                
                 for session in stale_sessions:
                     await playback_crud.end_session(session["id"])
+                    
+                    # Try to send a recap if MusicCog is available
+                    if music_cog:
+                        asyncio.create_task(music_cog.send_recap_for_session(session["id"], session["guild_id"]))
+                
                 logger.info("Stale sessions cleaned up.")
         except Exception as e:
             logger.error(f"Failed to cleanup stale sessions: {e}")

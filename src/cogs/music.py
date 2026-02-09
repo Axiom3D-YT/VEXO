@@ -1292,6 +1292,75 @@ class MusicCog(commands.Cog):
 
         except Exception as e:
             logger.error(f"Failed to generate session recap: {e}")
+
+    async def send_recap_for_session(self, session_id: str, guild_id: int):
+        """Send a recap for a session that has ended (especially for stale sessions)."""
+        if not hasattr(self.bot, "db") or not self.bot.db:
+            return
+
+        try:
+            analytics_crud = AnalyticsCRUD(self.bot.db)
+            stats = await analytics_crud.get_session_stats(session_id)
+            
+            guild = self.bot.get_guild(guild_id)
+            if not guild:
+                return
+
+            # Try to find a suitable text channel
+            channel = guild.system_channel
+            if not channel or not channel.permissions_for(guild.me).send_messages:
+                # Find first channel we can send to
+                channels = [c for c in guild.text_channels if c.permissions_for(guild.me).send_messages]
+                if not channels:
+                    return
+                channel = channels[0]
+
+            embed = discord.Embed(
+                title="🏁 Interrupted Session Recap",
+                description=f"This session was recently recovered and closed.",
+                color=discord.Color.orange()
+            )
+            
+            total_tracks = stats.get("total_tracks", 0)
+            if total_tracks > 0:
+                total_secs = stats.get("total_seconds") or 0
+                mins, secs = divmod(total_secs, 60)
+                hours, mins = divmod(mins, 60)
+                
+                duration_str = f"{secs}s"
+                if mins > 0: duration_str = f"{mins}m {duration_str}"
+                if hours > 0: duration_str = f"{hours}h {duration_str}"
+                
+                embed.add_field(name="📊 Stats", value=f"**{total_tracks}** tracks played\n**{duration_str}** total time", inline=True)
+                embed.add_field(name="👥 Listeners", value=f"**{stats.get('unique_listeners', 0)}** unique users", inline=True)
+                
+                if stats.get("top_artist"):
+                    embed.add_field(name="🎤 Top Artist", value=stats["top_artist"], inline=True)
+                
+                # Discovery breakdown
+                breakdown = stats.get("discovery_breakdown", {})
+                if breakdown:
+                    requested = breakdown.get("user_request", 0)
+                    discovered = sum(v for k, v in breakdown.items() if k != "user_request")
+                    total = requested + discovered
+                    if total > 0:
+                        req_pct = round((requested / total) * 100)
+                        disc_pct = 100 - req_pct
+                        embed.add_field(
+                            name="✨ Discovery Rate", 
+                            value=f"🙋 {req_pct}% Requests\n🎲 {disc_pct}% Autoplay", 
+                            inline=False
+                        )
+            else:
+                embed.description = "This session ended abruptly with no tracks played."
+
+            embed.set_footer(text="Vexo Music • Quality Audio Discovery")
+            embed.timestamp = datetime.now(UTC)
+
+            await channel.send(embed=embed, view=SessionEndedView(self, guild_id))
+
+        except Exception as e:
+            logger.error(f"Failed to send stale session recap: {e}")
     
     async def _idle_check_loop(self):
         """Check for idle players and disconnect."""
@@ -1403,10 +1472,16 @@ class SessionEndedView(discord.ui.View):
             
             # Followup to confirm start
             duration = await self.cog._get_ephemeral_duration(self.guild_id)
-            await interaction.followup.send("🚀 Starting new discovery session!", delete_after=duration)
+            msg = await interaction.followup.send("🚀 Starting new discovery session!")
+            try:
+                await msg.delete(delay=duration)
+            except: pass
         else:
             duration = await self.cog._get_ephemeral_duration(self.guild_id)
-            await interaction.followup.send("ℹ️ A session is already active!", delete_after=duration)
+            msg = await interaction.followup.send("ℹ️ A session is already active!")
+            try:
+                await msg.delete(delay=duration)
+            except: pass
 
 
 async def setup(bot: commands.Bot):
