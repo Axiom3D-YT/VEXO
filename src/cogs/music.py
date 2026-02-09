@@ -1006,8 +1006,20 @@ class MusicCog(commands.Cog):
         if not channel:
             return
             
-        # Delete old message
+        # Smart Update Logic: Check if we can just edit the last message
+        can_edit = False
         if player.last_np_msg:
+            try:
+                # Check if the last message in the channel is our NP message
+                async for message in channel.history(limit=1):
+                    if message.id == player.last_np_msg.id:
+                        can_edit = True
+                    break
+            except Exception as e:
+                logger.debug(f"Failed to check channel history: {e}")
+
+        # If we can't edit, delete the old message if it exists
+        if not can_edit and player.last_np_msg:
             try:
                 await player.last_np_msg.delete()
             except:
@@ -1090,7 +1102,17 @@ class MusicCog(commands.Cog):
             # Create view with buttons
             view = NowPlayingView(self, player.guild_id)
             
-            player.last_np_msg = await channel.send(embed=embed, view=view)
+            if can_edit and player.last_np_msg:
+                try:
+                    await player.last_np_msg.edit(embed=embed, view=view)
+                except discord.NotFound:
+                    # Message was deleted since we checked
+                    player.last_np_msg = await channel.send(embed=embed, view=view)
+                except Exception as e:
+                    logger.debug(f"Failed to edit Now Playing embed: {e}")
+                    player.last_np_msg = await channel.send(embed=embed, view=view)
+            else:
+                player.last_np_msg = await channel.send(embed=embed, view=view)
         except Exception as e:
             logger.debug(f"Failed to send Now Playing embed: {e}")
     
