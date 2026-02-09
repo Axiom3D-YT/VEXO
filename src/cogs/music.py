@@ -1375,20 +1375,17 @@ class MusicCog(commands.Cog):
             embed.set_footer(text="Vexo Music • Quality Audio Discovery")
             embed.timestamp = datetime.now(UTC)
 
-            # Try to edit the old Now Playing message if we have its ID
-            msg_sent = False
+            # Try to delete the old Now Playing message if we have its ID
             last_msg_id = stats.get("last_message_id")
             if last_msg_id:
                 try:
                     old_msg = await channel.fetch_message(int(last_msg_id))
                     if old_msg:
-                        await old_msg.edit(embed=embed, view=SessionEndedView(self, guild_id))
-                        msg_sent = True
+                        await old_msg.delete()
                 except Exception:
                     pass
 
-            if not msg_sent:
-                await channel.send(embed=embed, view=SessionEndedView(self, guild_id))
+            await channel.send(embed=embed, view=SessionEndedView(self, guild_id))
 
         except Exception as e:
             logger.error(f"Failed to send stale session recap: {e}")
