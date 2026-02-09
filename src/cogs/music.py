@@ -1308,10 +1308,15 @@ class MusicCog(commands.Cog):
 
             # Try to find a suitable text channel
             channel = guild.system_channel
-            if not channel or not channel.permissions_for(guild.me).send_messages:
-                # Find first channel we can send to
-                channels = [c for c in guild.text_channels if c.permissions_for(guild.me).send_messages]
+            # Need both send_messages AND embed_links
+            if not channel or not (channel.permissions_for(guild.me).send_messages and channel.permissions_for(guild.me).embed_links):
+                # Find first channel we can send to with embeds
+                channels = [
+                    c for c in guild.text_channels 
+                    if c.permissions_for(guild.me).send_messages and c.permissions_for(guild.me).embed_links
+                ]
                 if not channels:
+                    logger.warning(f"Could not find a suitable text channel to send recap in guild {guild.name}")
                     return
                 channel = channels[0]
 
