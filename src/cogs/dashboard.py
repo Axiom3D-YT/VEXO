@@ -30,8 +30,22 @@ class WebSocketLogHandler(logging.Handler):
         self._count_this_second = 0
     
     def emit(self, record):
-        if self.ws_manager.clients:
-            # Rate limiting for Pi 3: Max 10 logs per second to the web dashboard
+        try:
+            log_entry = {
+                "timestamp": record.created,
+                "level": record.levelname,
+                "message": record.getMessage(),
+                "logger": record.name,
+                "guild_id": getattr(record, "guild_id", None),
+            }
+            
+            # Always add to recent history buffer
+            self.ws_manager.record_locally(log_entry)
+            
+            # Rate limiting for broadcasting to active clients (Pi 3 optimization)
+            if not self.ws_manager.clients:
+                return
+
             import time
             now = time.time()
             if int(now) == int(self._last_emit):
@@ -43,30 +57,21 @@ class WebSocketLogHandler(logging.Handler):
             if self._count_this_second > 10:
                 return # Drop log burst to prevent event loop starvation
                 
+            # Check if we're in the same loop
             try:
-                log_entry = {
-                    "timestamp": record.created,
-                    "level": record.levelname,
-                    "message": record.getMessage(),
-                    "logger": record.name,
-                    "guild_id": getattr(record, "guild_id", None),
-                }
-                
-                # Check if we're in the same loop
-                try:
-                    current_loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    current_loop = None
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
 
-                if current_loop == self.loop:
-                    asyncio.create_task(self.ws_manager.broadcast(log_entry))
-                else:
-                    asyncio.run_coroutine_threadsafe(
-                        self.ws_manager.broadcast(log_entry), 
-                        self.loop
-                    )
-            except Exception:
-                pass
+            if current_loop == self.loop:
+                asyncio.create_task(self.ws_manager.broadcast(log_entry))
+            else:
+                asyncio.run_coroutine_threadsafe(
+                    self.ws_manager.broadcast(log_entry), 
+                    self.loop
+                )
+        except Exception:
+            pass
 
 
 class WebSocketManager:
@@ -76,8 +81,12 @@ class WebSocketManager:
         self.clients: set[web.WebSocketResponse] = set()
         self.recent_logs: deque = deque(maxlen=100)
     
-    async def broadcast(self, message: dict):
+    def record_locally(self, message: dict):
+        """Add to the history buffer for new connections."""
         self.recent_logs.append(message)
+
+    async def broadcast(self, message: dict):
+        """Send message to all active clients."""
         disconnected = set()
         for ws in self.clients:
             try:
@@ -115,6 +124,7 @@ class DashboardCog(commands.Cog):
         self._log_handler = WebSocketLogHandler(self.ws_manager, self.bot.loop)
         self._log_handler.setLevel(logging.INFO)
         logging.getLogger().addHandler(self._log_handler)
+        logger.info("Web dashboard log handler initialized and active.")
         
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()

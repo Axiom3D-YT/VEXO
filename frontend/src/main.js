@@ -73,14 +73,23 @@ document.addEventListener('DOMContentLoaded', () => {
 // WebSocket for live logs
 function initWebSocket() {
     try {
-        ws = new WebSocket(`ws://${location.host}/ws/logs`);
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/logs`;
+        console.log(`[Dashboard] Connecting to WebSocket: ${wsUrl}`);
+
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => console.log('[Dashboard] WebSocket connected');
         ws.onmessage = (e) => {
             const log = JSON.parse(e.data);
             addLogEntry(log);
         };
-        ws.onclose = () => setTimeout(initWebSocket, 3000);
+        ws.onclose = (e) => {
+            console.warn('[Dashboard] WebSocket closed, retrying in 3s...', e.reason);
+            setTimeout(initWebSocket, 3000);
+        };
+        ws.onerror = (err) => console.error('[Dashboard] WebSocket error:', err);
     } catch (e) {
-        console.error('WS Error', e);
+        console.error('[Dashboard] WS Init Error', e);
     }
 }
 
