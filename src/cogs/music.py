@@ -1610,14 +1610,27 @@ class MusicCog(commands.Cog):
                 normalized = str(g).title()
                 genre_votes[normalized] += 1
         
-        # 1. Update Year (Earliest Wins)
+        # 1. Update Year (Consensus: Most Common Year Wins, Earliest Year breaks ties)
         if found_years:
-            earliest_year = min(found_years)
-            if not item.year or earliest_year < item.year:
-                logger.info(f"Updating year for '{item.title}': {item.year} -> {earliest_year} (Earliest from {found_years})")
-                item.year = earliest_year
+            # Count occurrences of each year
+            year_counts = Counter(found_years)
+            
+            # Find the maximum count
+            max_count = max(year_counts.values())
+            
+            # Get all years that have the maximum count (candidates for tie-breaking)
+            candidates = [year for year, count in year_counts.items() if count == max_count]
+            
+            # Tie-breaker: Pick the earliest year among the candidates
+            consensus_year = min(candidates)
+            
+            logger.info(f"Year Consensus Analysis: found={found_years}, counts={dict(year_counts)}, candidates={candidates}, winner={consensus_year}")
+
+            if not item.year or consensus_year != item.year:
+                logger.info(f"Updating year for '{item.title}': {item.year} -> {consensus_year} (Consensus Wrapper)")
+                item.year = consensus_year
             else:
-                 logger.info(f"Kept existing year {item.year} (Sources offered {found_years})")
+                 logger.info(f"Kept existing year {item.year} (Matches consensus)")
         
         # 2. Update Genre (Most Common)
         if genre_votes:
