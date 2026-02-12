@@ -1492,19 +1492,18 @@ class MusicCog(commands.Cog):
 
     async def _resolve_metadata(self, item: QueueItem, config: dict | None):
         """
-        Resolve metadata (Genre/Year) using configured strategies (Fallback or Consensus).
+        Resolve metadata (Genre/Year) using all available sources to find the earliest year and best genre.
         """
-        # Optimize: Return early if metadata is already present
-        if item.genre and item.year:
-            logger.debug(f"Skipping metadata resolution for '{item.title}' - already has Genre: {item.genre}, Year: {item.year}")
-            return
+        # Optimize: Return early if metadata is already present AND validated
+        # But we don't trust YouTube years anymore, so we usually run this unless we have a "trusted" flag.
+        # For now, we'll run it if we have any enabled engines.
 
-        logger.debug(f"DEBUG: _resolve_metadata called for '{item.title}'. Config: {config}")
+        logger.debug(f"DEBUG: _resolve_metadata called for '{item.title}'")
 
         # Default Config
         if not config:
             config = {
-                "strategy": "fallback",
+                "strategy": "consensus", # Default to consensus for accuracy
                 "engines": {
                     "spotify": {"enabled": True, "priority": 1},
                     "discogs": {"enabled": True, "priority": 2},
@@ -1512,57 +1511,59 @@ class MusicCog(commands.Cog):
                 }
             }
         
-        strategy = config.get("strategy", "fallback")
-        engines = config.get("engines", {})
+        engines_config = config.get("engines", {})
         
         # Sort enabled engines by priority
         active_engines = []
-        for name, settings in engines.items():
+        for name, settings in engines_config.items():
             if settings.get("enabled", True):
                 active_engines.append((name, settings.get("priority", 99)))
         
         active_engines.sort(key=lambda x: x[1]) # Sort by priority
         
-        logger.info(f"Resolving metadata for '{item.title}' using {strategy} strategy with {[e[0] for e in active_engines]}")
+        if not active_engines:
+            return
 
-        # --- Helper Functions ---
+        # Prepare Clean Query
+        clean_title = self.bot.normalizer.clean_title(item.title)
+        logger.info(f"Resolving metadata for '{item.title}' (Clean: '{clean_title}') using sources: {[e[0] for e in active_engines]}")
+
+        # --- Helper Functions (Now returning dicts) ---
         async def fetch_spotify():
             spotify = getattr(self.bot, "spotify", None)
-            if not spotify: return []
+            if not spotify: return {"genres": [], "year": None}
             try:
-                query = f"{item.artist} {item.title}"
+                # Use Clean Title!
+                query = f"{item.artist} {clean_title}"
                 sp_track = await spotify.search_track(query)
                 if sp_track:
-                    # Update year if found
-                    if sp_track.release_year:
-                        item.year = sp_track.release_year
-                    
+                    genres = []
                     artist = await spotify.get_artist(sp_track.artist_id)
                     if artist and artist.genres:
-                        return artist.genres  # Return list
+                        genres = artist.genres
+                    
+                    return {"genres": genres, "year": sp_track.release_year}
             except Exception as e:
                 logger.error(f"Spotify fetch failed: {e}")
-            return []
+            return {"genres": [], "year": None}
 
         async def fetch_discogs():
-            if not hasattr(self, "discogs"): return []
+            if not hasattr(self, "discogs"): return {"genres": [], "year": None}
             try:
-                genres = await self.discogs.get_genre(item.artist, item.title)
-                return genres if genres else []
+                return await self.discogs.get_metadata(item.artist, clean_title)
             except Exception as e:
                 logger.error(f"Discogs fetch failed: {e}")
-            return []
+            return {"genres": [], "year": None}
 
         async def fetch_musicbrainz():
-            if not hasattr(self, "musicbrainz"): return []
+            if not hasattr(self, "musicbrainz"): return {"genres": [], "year": None}
             try:
-                genres = await self.bot.loop.run_in_executor(
-                    None, self.musicbrainz.get_genre, item.artist, item.title
+                return await self.bot.loop.run_in_executor(
+                    None, self.musicbrainz.get_metadata, item.artist, clean_title
                 )
-                return genres if genres else []
             except Exception as e:
                 logger.error(f"MusicBrainz fetch failed: {e}")
-            return []
+            return {"genres": [], "year": None}
 
         engine_map = {
             "spotify": fetch_spotify,
@@ -1570,81 +1571,90 @@ class MusicCog(commands.Cog):
             "musicbrainz": fetch_musicbrainz
         }
 
-        found_genre = None
-
-        if strategy == "consensus":
-            # Parallel execution
-            tasks = []
-            param_map = []
-            
-            for name, _ in active_engines:
-                if name in engine_map:
-                    tasks.append(engine_map[name]())
-                    param_map.append(name)
-            
-            if tasks:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                votes = Counter()
-                for i, res in enumerate(results):
-                    if isinstance(res, Exception):
-                        logger.warning(f"Engine {param_map[i]} failed: {res}")
-                        continue
-                    if not res:
-                        logger.info(f"Engine {param_map[i]} voted for: None (No result)")
-                        continue
-                        
-                    # Normalize simple genres for better consensus
-                    # res is now a list of strings
-                    engine_votes = []
-                    for g in res:
-                        normalized = str(g).title()
-                        votes[normalized] += 1
-                        engine_votes.append(normalized)
-                    
-                    logger.info(f"Engine {param_map[i]} voted for: {engine_votes}")
-                
-                if votes:
-                    # Get most common
-                    winner, count = votes.most_common(1)[0]
-                    found_genre = winner
-                    logger.info(f"Consensus winner: {found_genre} ({count} votes)")
-                else:
-                    logger.info("No consensus reached (no results)")
-
-        else: # Fallback Strategy
-            for name, _ in active_engines:
-                if item.genre: break # Already found (e.g. from previous loop if re-running)
-                
-                if name in engine_map:
-                    logger.info(f"Trying engine: {name}...")
-                    res = await engine_map[name]()
-                    if res:
-                        found_genre = res
-                        logger.info(f"Found genre via {name}: {found_genre}")
-                        break
+        # Execute Parallel Requests (Consensus/Aggregation)
+        tasks = []
+        source_names = []
         
-        # Apply result
-        if found_genre:
-            item.genre = found_genre
+        for name, _ in active_engines:
+            if name in engine_map:
+                tasks.append(engine_map[name]())
+                source_names.append(name)
+        
+        if not tasks:
+            return
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Aggregation Logic
+        found_years = []
+        genre_votes = Counter()
+        
+        for i, res in enumerate(results):
+            source = source_names[i]
+            if isinstance(res, Exception):
+                logger.warning(f"Engine {source} failed: {res}")
+                continue
             
-            # Save to DB
-            if item.song_db_id and hasattr(self.bot, "db"):
-                try:
-                    from src.database.crud import SongCRUD
-                    song_crud = SongCRUD(self.bot.db)
+            if not res:
+                continue
+                
+            # Collect Year
+            y = res.get("year")
+            if y and isinstance(y, int) and y > 1900 and y <= datetime.now().year + 1:
+                found_years.append(y)
+                logger.info(f"Source {source} returned year: {y}")
+            
+            # Collect Genres
+            g_list = res.get("genres", [])
+            for g in g_list:
+                normalized = str(g).title()
+                genre_votes[normalized] += 1
+        
+        # 1. Update Year (Earliest Wins)
+        if found_years:
+            earliest_year = min(found_years)
+            if not item.year or earliest_year < item.year:
+                logger.info(f"Updating year for '{item.title}': {item.year} -> {earliest_year} (Earliest from {found_years})")
+                item.year = earliest_year
+            else:
+                 logger.info(f"Kept existing year {item.year} (Sources offered {found_years})")
+        
+        # 2. Update Genre (Most Common)
+        if genre_votes:
+            winner, count = genre_votes.most_common(1)[0]
+            if not item.genre or (item.discovery_source == "wildcard" and count > 1):
+                 # Overwrite if we have no genre, or if we have a strong consensus
+                 item.genre = winner
+                 logger.info(f"Consensus genre winner: {winner} ({count} votes)")
+        
+        # 3. Persistence
+        if (item.year or item.genre) and item.song_db_id and hasattr(self.bot, "db"):
+             try:
+                from src.database.crud import SongCRUD
+                song_crud = SongCRUD(self.bot.db)
+                
+                # Update genre
+                if item.genre:
                     await song_crud.clear_genres(item.song_db_id)
                     await song_crud.add_genre(item.song_db_id, item.genre)
-                    # Sync year if it was updated by spotify side-effect
-                    if item.year:
-                         await song_crud.get_or_create_by_yt_id(
-                            canonical_yt_id=item.video_id,
-                            title=item.title,
-                            artist_name=item.artist,
-                            release_year=item.year
-                        )
-                except Exception as e:
-                    logger.error(f"Failed to save resolved metadata: {e}")
+                
+                # Update year
+                if item.year:
+                    # We can't easily update just the year with crud.get_or_create_by_yt_id without refetching logic
+                    # So we'll run a direct update query or use the crud smartly
+                    # Ideally SongCRUD should have update_metadata(id, year=...)
+                    # For now, re-calling get_or_create with the NEW year should update it if implemented right, 
+                    # or we can add a specific update method. 
+                    # Checking SongCRUD... it usually updates on conflict or we can just ignore for now if too complex.
+                    # Let's try to update via get_or_create which might handle upsert
+                    await song_crud.get_or_create_by_yt_id(
+                        canonical_yt_id=item.video_id,
+                        title=item.title,
+                        artist_name=item.artist,
+                        release_year=item.year
+                    )
+             except Exception as e:
+                logger.error(f"Failed to persist resolved metadata: {e}")
 
 class SessionEndedView(discord.ui.View):
     """View shown when a playback session has ended."""

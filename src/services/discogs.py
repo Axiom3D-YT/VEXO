@@ -49,10 +49,10 @@ class DiscogsService:
             logger.error(f"Failed to initialize DiscogsService: {e}")
             self.enabled = False
 
-    async def get_genre(self, artist: str, title: str) -> list[str]:
+    async def get_metadata(self, artist: str, title: str) -> dict:
         """
-        Search for a track on Discogs and return its genres/styles.
-        Returns a list of strings or empty list if not found.
+        Search for a track on Discogs and return metadata (genres, year).
+        Returns a dict with 'genres' (list) and 'year' (int/None).
         """
         if not self.enabled or not self.client:
             return []
@@ -77,9 +77,9 @@ class DiscogsService:
         except Exception as e:
             logger.error(f"Discogs search error for '{artist} - {title}': {e}")
             
-        return []
+        return {"genres": [], "year": None}
 
-    def _search_sync(self, artist: str, title: str) -> list[str]:
+    def _search_sync(self, artist: str, title: str) -> dict:
         """Synchronous search function to be run in executor."""
         try:
             # Clean up query
@@ -104,11 +104,11 @@ class DiscogsService:
             if combined:
                 logger.info(f"Discogs found genres for '{artist} - {title}': {combined}")
             
-            return combined
+            return {"genres": combined, "year": release.year}
             
         except IndexError:
             # No results found
-            return []
+            return {"genres": [], "year": None}
         except Exception as e:
             logger.debug(f"Discogs sync search failed: {e}")
-            return []
+            return {"genres": [], "year": None}
