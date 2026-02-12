@@ -843,6 +843,12 @@ class MusicCog(commands.Cog):
                     except asyncio.TimeoutError:
                         logger.error(f"Audio probe timed out for {item.title}")
                         continue
+                    except asyncio.CancelledError:
+                        logger.warning(f"Audio probe cancelled for {item.title}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Audio probe failed for {item.title}: {e}")
+                        continue
 
                     play_complete = asyncio.Event()
                     
@@ -1508,8 +1514,9 @@ class MusicCog(commands.Cog):
         Resolve metadata (Genre/Year) using all available sources to find the earliest year and best genre.
         """
         # Optimize: Return early if metadata is already present AND validated
-        # But we don't trust YouTube years anymore, so we usually run this unless we have a "trusted" flag.
-        # For now, we'll run it if we have any enabled engines.
+        if item.genre and item.year:
+            logger.debug(f"Metadata already resolved for '{item.title}' (Genre: {item.genre}, Year: {item.year}). Skipping.")
+            return
 
         logger.debug(f"DEBUG: _resolve_metadata called for '{item.title}'")
 
