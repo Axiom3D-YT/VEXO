@@ -31,7 +31,7 @@ Vexo employs a multi-layered metadata strategy to ensure every song has its cont
 - FFmpeg
 - Discord Bot Token
 - Spotify API Credentials (Client ID & Secret)
-- Discogs Token (Highly Recommended for Discovery)
+- Discogs Key & Secret (Highly Recommended for Discovery)
 
 ### 2. Local Installation
 ```bash
