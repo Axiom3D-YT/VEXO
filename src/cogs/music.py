@@ -961,11 +961,9 @@ class MusicCog(commands.Cog):
             return None
         
         voice_members = [m.id for m in player.voice_client.channel.members if not m.bot]
-        if not voice_members:
-            return None
         
         # Try discovery engine first
-        if hasattr(self.bot, "discovery") and self.bot.discovery:
+        if voice_members and hasattr(self.bot, "discovery") and self.bot.discovery:
             try:
                 # Get Cooldown and Weights Setting
                 cooldown = 7200 # Default 2 hours
