@@ -1605,12 +1605,16 @@ class MusicCog(commands.Cog):
         
         for name, _ in active_engines:
             if name in engine_map:
-                tasks.append(engine_map[name]())
+                # MUST wrap coroutines in Tasks for asyncio.wait in Python 3.11+
+                # AND to keep track of them for result mapping
+                task = asyncio.create_task(engine_map[name]())
+                tasks.append(task)
                 source_names.append(name)
         
         if not tasks:
             return
 
+        mapped_results = []
         try:
             # Use asyncio.wait to support partial results (timeout=5.0)
             # This allows us to keep Spotify/Discogs results even if MusicBrainz hangs
@@ -1619,22 +1623,24 @@ class MusicCog(commands.Cog):
             # Cancel pending (stuck) tasks
             for p in pending:
                 p.cancel()
-                
-            results = []
-            for task in done:
+            
+            # Reconstruct results IN ORDER of source_names
+            # This is critical because aggregation logic uses index matching
+            for i, task in enumerate(tasks):
                 try:
-                    if not task.cancelled():
+                    if task in done and not task.cancelled():
                         exc = task.exception()
                         if exc:
-                            logger.warning(f"Metadata task failed: {exc}")
+                            logger.warning(f"Metadata start task for {source_names[i]} failed: {exc}")
+                            mapped_results.append(exc)
                         else:
-                            results.append(task.result())
+                            mapped_results.append(task.result())
+                    else:
+                        logger.warning(f"Metadata source {source_names[i]} timed out or was cancelled")
+                        mapped_results.append(None)
                 except Exception as e:
-                    logger.error(f"Error retrieving task result: {e}")
-
-            if not results and pending:
-                logger.warning(f"Metadata resolution returned no results (timeout) for '{item.title}'")
-                return
+                    logger.error(f"Error retrieving task result for {source_names[i]}: {e}")
+                    mapped_results.append(e)
 
         except Exception as e:
             logger.error(f"Metadata resolution critical failure: {e}")
@@ -1644,7 +1650,7 @@ class MusicCog(commands.Cog):
         found_years = []
         genre_votes = Counter()
         
-        for i, res in enumerate(results):
+        for i, res in enumerate(mapped_results):
             source = source_names[i]
             if isinstance(res, Exception):
                 logger.warning(f"Engine {source} failed: {res}")
