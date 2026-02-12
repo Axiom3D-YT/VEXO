@@ -803,7 +803,7 @@ function updateSongsList(songs) {
                 <td>${s.artist_name}</td>
                 <td>${durationStr}</td>
                 <td>${s.genre || '-'}</td>
-                <td><span class="user-list">${s.requested_by || '-'}</span></td>
+                <td><span class="user-list" style="cursor: pointer" onclick="viewUser('${s.requested_by_id}')">${s.requested_by || '-'}</span></td>
                 <td><span class="user-list liked">${s.liked_by || '-'}</span></td>
                 <td><span class="user-list disliked">${s.disliked_by || '-'}</span></td>
                 <td>${timeStr}</td>

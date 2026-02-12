@@ -371,6 +371,7 @@ class DashboardCog(commands.Cog):
             SELECT ph.played_at, s.title, s.artist_name, s.duration_seconds,
             (SELECT GROUP_CONCAT(DISTINCT sg.genre) FROM song_genres sg WHERE sg.song_id = s.id) as genre,
             CASE WHEN ph.discovery_source = 'user_request' THEN u.username ELSE NULL END as requested_by,
+            ph.for_user_id as requested_by_id,
             (SELECT GROUP_CONCAT(DISTINCT u2.username) FROM song_reactions sr JOIN users u2 ON sr.user_id = u2.id WHERE sr.song_id = s.id AND sr.reaction = 'like') as liked_by,
             (SELECT GROUP_CONCAT(DISTINCT u2.username) FROM song_reactions sr JOIN users u2 ON sr.user_id = u2.id WHERE sr.song_id = s.id AND sr.reaction = 'dislike') as disliked_by
             FROM playback_history ph JOIN songs s ON ph.song_id = s.id JOIN playback_sessions ps ON ph.session_id = ps.id LEFT JOIN users u ON ph.for_user_id = u.id

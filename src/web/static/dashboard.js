@@ -96,7 +96,7 @@
                 <td>${n.artist_name}</td>
                 <td>${s}</td>
                 <td>${n.genre||"-"}</td>
-                <td><span class="user-list">${n.requested_by||"-"}</span></td>
+                <td><span class="user-list" style="cursor: pointer" onclick="viewUser('${n.requested_by_id}')">${n.requested_by||"-"}</span></td>
                 <td><span class="user-list liked">${n.liked_by||"-"}</span></td>
                 <td><span class="user-list disliked">${n.disliked_by||"-"}</span></td>
                 <td>${i}</td>
