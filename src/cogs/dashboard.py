@@ -368,7 +368,7 @@ class DashboardCog(commands.Cog):
             params.append(int(guild_id))
         
         query = f"""
-            SELECT ph.played_at, s.title, s.artist_name, s.duration_seconds,
+            SELECT ph.played_at, s.title, s.artist_name, s.duration_seconds, s.release_year,
             (SELECT GROUP_CONCAT(DISTINCT sg.genre) FROM song_genres sg WHERE sg.song_id = s.id) as genre,
             CASE WHEN ph.discovery_source = 'user_request' THEN u.username ELSE NULL END as requested_by,
             ph.for_user_id as requested_by_id,

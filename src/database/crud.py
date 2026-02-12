@@ -338,7 +338,7 @@ class PlaybackCRUD:
     async def get_recent_history(self, guild_id: int, limit: int = 30) -> list[dict]:
         """Get recent playback history for a guild by count."""
         return await self.db.fetch_all(
-            """SELECT ph.*, s.canonical_yt_id, s.title, s.artist_name
+            """SELECT ph.*, s.canonical_yt_id, s.title, s.artist_name, s.release_year
                FROM playback_history ph
                JOIN playback_sessions ps ON ph.session_id = ps.id
                JOIN songs s ON ph.song_id = s.id
@@ -927,6 +927,7 @@ class LibraryCRUD:
                 s.id,
                 s.title,
                 s.artist_name,
+                s.release_year,
                 (SELECT GROUP_CONCAT(DISTINCT sg.genre) FROM song_genres sg WHERE sg.song_id = s.id) as genre,
                 GROUP_CONCAT(DISTINCT u.username) as contributors,
                 GROUP_CONCAT(DISTINCT l.source) as sources,
