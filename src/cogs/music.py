@@ -1068,7 +1068,18 @@ class MusicCog(commands.Cog):
         if not channel:
             return
             
-        # 2. Generate Script (Non-blocking)
+        # 2. Check if Groq is enabled globally
+        if hasattr(self.bot, "db") and self.bot.db:
+            try:
+                from src.database.crud import SystemCRUD
+                system_crud = SystemCRUD(self.bot.db)
+                groq_enabled = await system_crud.get_global_setting("groq_enabled")
+                if groq_enabled is False: # Explicitly False (default True)
+                    return
+            except Exception as e:
+                logger.error(f"Failed to check groq_enabled setting: {e}")
+
+        # 3. Generate Script (Non-blocking)
         try:
             script_text = await self.groq.generate_script(item.title, item.artist)
             

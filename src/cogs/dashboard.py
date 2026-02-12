@@ -454,8 +454,12 @@ class DashboardCog(commands.Cog):
             limit = await crud.get_global_setting("max_concurrent_servers")
             test_mode = await crud.get_global_setting("test_mode")
             test_duration = await crud.get_global_setting("playback_duration")
+            groq_enabled = await crud.get_global_setting("groq_enabled")
             return web.json_response({
-                "max_concurrent_servers": limit, "test_mode": test_mode, "playback_duration": test_duration or 30
+                "max_concurrent_servers": limit, 
+                "test_mode": test_mode, 
+                "playback_duration": test_duration or 30,
+                "groq_enabled": groq_enabled if groq_enabled is not None else True
             })
 
     async def _get_notifications_data(self):
