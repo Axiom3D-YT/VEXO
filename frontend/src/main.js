@@ -916,7 +916,6 @@ function selectGuild(e, id) {
     if (e && e.currentTarget) e.currentTarget.classList.add('active');
 }
 
-function viewUser(id) { console.log('View user', id); }
 
 function control(action) {
     if (currentGuild.value) {
