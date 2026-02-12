@@ -320,6 +320,16 @@ class DashboardCog(commands.Cog):
             if "metadata_config" in data:
                  await crud.set_setting(guild_id, "metadata_config", data["metadata_config"])
                  
+            # New Advanced Settings
+            new_settings = [
+                "twenty_four_seven", "auto_connect", "auto_connect_channel",
+                "groq_enabled", "groq_send_text", "groq_offset", "groq_custom_prompts",
+                "tts_enabled", "tts_voice", "tts_slow"
+            ]
+            for key in new_settings:
+                if key in data:
+                    await crud.set_setting(guild_id, key, data[key])
+
             music = self.bot.get_cog("MusicCog")
             if music:
                 player = music.get_player(guild_id)

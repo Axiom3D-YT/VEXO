@@ -383,6 +383,49 @@
                             </div>
                         </div>
 
+                        <h3 style="font-size: 1rem; margin-bottom: 1rem;">⚙️ General Server Settings</h3>
+                        <div class="form-group"
+                            style="display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                                <label class="form-label">Pre-buffering</label>
+                                <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                    Prepare the next song before the current one ends.
+                                </div>
+                            </div>
+                            <div>
+                                <input type="checkbox" id="setting-pre-buffer" style="transform: scale(1.5);">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 1.5rem;">
+                            <label class="form-label">Buffer Amount (Seconds)</label>
+                            <input type="number" id="setting-buffer-amount" class="form-input" placeholder="e.g. 30"
+                                min="10" max="120" style="max-width: 300px;">
+                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+                                How many seconds before the end of the song to start buffering.
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 1.5rem;">
+                            <label class="form-label">Max Song Duration (Minutes)</label>
+                            <input type="number" id="setting-max-duration" class="form-input" placeholder="e.g. 6"
+                                min="1" max="120" style="max-width: 300px;">
+                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+                                Prevent extremely long songs from being queued.
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 1.5rem;">
+                            <label class="form-label">Message Auto-Delete Duration (Seconds)</label>
+                            <input type="number" id="setting-ephemeral-duration" class="form-input"
+                                placeholder="e.g. 10" min="0" max="60" style="max-width: 300px;">
+                            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+                                How long to keep bot messages before auto-deleting.
+                            </div>
+                        </div>
+
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
                         <h3 style="font-size: 1rem; margin-bottom: 1rem;">🕒 Playback & Connectivity</h3>
                         <div class="form-group"
                             style="display: flex; align-items: center; justify-content: space-between;">
@@ -508,6 +551,50 @@
                                     <input type="checkbox" id="setting-tts-slow" style="transform: scale(1.5);">
                                 </div>
                             </div>
+                        </div>
+
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
+
+                        <h3 style="font-size: 1rem; margin-bottom: 1rem;">🎯 Discovery Strategies</h3>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                            Adjust the weights for different recommendation strategies. Total must equal 100.
+                        </div>
+                        <div class="grid" style="grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                            <div class="form-group">
+                                <label class="form-label">Similar Song (Strategy 1)</label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="number" id="weight-similar" class="form-input weight-input" value="60"
+                                        min="0" max="100" oninput="validateWeights()">
+                                    <span>%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Same Artist (Strategy 2)</label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="number" id="weight-artist" class="form-input weight-input" value="10"
+                                        min="0" max="100" oninput="validateWeights()">
+                                    <span>%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Wildcard (Strategy 3)</label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="number" id="weight-wildcard" class="form-input weight-input" value="30"
+                                        min="0" max="100" oninput="validateWeights()">
+                                    <span>%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Library (Strategy 4)</label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="number" id="weight-library" class="form-input weight-input" value="0"
+                                        min="0" max="100" oninput="validateWeights()">
+                                    <span>%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 0.5rem; font-weight: 500; text-align: right;">
+                            Total: <span id="weights-total">100</span>%
                         </div>
 
                         <hr style="border: 0; border-top: 1px solid var(--border); margin: 2rem 0;">
