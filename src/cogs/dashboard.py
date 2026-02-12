@@ -168,7 +168,7 @@ class DashboardCog(commands.Cog):
         self.app.router.add_get("/api/guilds/{guild_id}/settings", self._handle_guild_settings)
         self.app.router.add_post("/api/guilds/{guild_id}/settings", self._handle_update_settings)
         self.app.router.add_post("/api/guilds/{guild_id}/control/{action}", self._handle_control)
-        self.app.router.add_get("/api/dashboard-init", self._api_dashboard_init)
+        self.app.router.add_get("/api/dashboard-init", self._handle_dashboard_init)
         self.app.router.add_get("/api/logs", self._api_get_logs)
         self.app.router.add_get("/ws/logs", self._handle_websocket)
         self.app.router.add_get("/api/analytics", self._handle_analytics)
@@ -182,7 +182,6 @@ class DashboardCog(commands.Cog):
         self.app.router.add_post("/api/settings/global", self._handle_global_settings)
         self.app.router.add_get("/api/notifications", self._handle_notifications)
         self.app.router.add_post("/api/guilds/{guild_id}/leave", self._handle_leave_guild)
-        self.app.router.add_get("/api/dashboard-init", self._handle_dashboard_init)
     
     async def _handle_index(self, request: web.Request) -> web.Response:
         html_file = TEMPLATE_DIR / "index.html"
@@ -642,9 +641,11 @@ class DashboardCog(commands.Cog):
         return web.json_response({"logs": list(self.ws_manager.recent_logs)})
 
     async def _handle_websocket(self, request: web.Request) -> web.WebSocketResponse:
-        ws = web.WebSocketResponse()
+        logger.info(f"WebSocket connection attempt from {request.remote}")
+        ws = web.WebSocketResponse(heartbeat=30.0)
         await ws.prepare(request)
         self.ws_manager.clients.add(ws)
+        logger.info(f"WebSocket connected. Total clients: {len(self.ws_manager.clients)}")
         for log in self.ws_manager.recent_logs:
             await ws.send_json(log)
         try:
