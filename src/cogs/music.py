@@ -189,7 +189,7 @@ class MusicCog(commands.Cog):
     """Music playback commands and queue management."""
     
     FFMPEG_OPTIONS = {
-        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin",
+        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin -timeout 10000000",
         "options": "-vn",
     }
     IDLE_TIMEOUT = 300  # 5 minutes
@@ -833,8 +833,17 @@ class MusicCog(commands.Cog):
                 
                 # Play the audio
                 try:
-                    source = await discord.FFmpegOpusAudio.from_probe(url, **self.FFMPEG_OPTIONS)
-                    
+                    logger.info(f"Starting audio probe for {item.title}...")
+                    try:
+                        source = await asyncio.wait_for(
+                            discord.FFmpegOpusAudio.from_probe(url, **self.FFMPEG_OPTIONS),
+                            timeout=10.0
+                        )
+                        logger.info(f"Audio probe finished for {item.title}")
+                    except asyncio.TimeoutError:
+                        logger.error(f"Audio probe timed out for {item.title}")
+                        continue
+
                     play_complete = asyncio.Event()
                     
                     def after_play(error):
@@ -1587,7 +1596,17 @@ class MusicCog(commands.Cog):
         if not tasks:
             return
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=5.0
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Metadata resolution timed out for '{item.title}' after 5s")
+            return
+        except Exception as e:
+            logger.error(f"Metadata resolution failed: {e}")
+            return
         
         # Aggregation Logic
         found_years = []
