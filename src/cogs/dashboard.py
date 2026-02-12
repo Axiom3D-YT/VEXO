@@ -381,6 +381,8 @@ class DashboardCog(commands.Cog):
         data = []
         for s in songs:
             item = dict(s)
+            if item.get("requested_by_id"):
+                item["requested_by_id"] = str(item["requested_by_id"])
             for key in ["created_at", "last_played", "played_at"]:
                 if key in item and item[key] and hasattr(item[key], "isoformat"):
                     item[key] = item[key].isoformat()
@@ -436,7 +438,7 @@ class DashboardCog(commands.Cog):
         users = await crud.get_top_users(limit=50, guild_id=gid)
         data = []
         for u in users:
-            d = dict(u); d["formatted_id"] = str(d["id"])
+            d = dict(u); d["id"] = str(d["id"]); d["formatted_id"] = d["id"]
             data.append(d)
         return web.json_response({"users": data})
 
@@ -532,6 +534,7 @@ class DashboardCog(commands.Cog):
         # Format dates for JSON
         if details.get("user"):
             user = dict(details["user"])
+            user["id"] = str(user["id"])
             if user.get("last_active") and hasattr(user["last_active"], "isoformat"):
                 user["last_active"] = user["last_active"].isoformat()
             details["user"] = user

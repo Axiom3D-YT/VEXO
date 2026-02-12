@@ -164,6 +164,8 @@ function addLogEntry(log) {
 
 // User Profile Functions
 async function viewUser(userId) {
+    if (!userId || userId === 'null' || userId === 'undefined') return;
+
     const modal = document.getElementById('user-modal');
     if (!modal) return;
 
