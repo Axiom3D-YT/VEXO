@@ -35,6 +35,7 @@ class QueueItem:
     duration_seconds: int | None = None
     genre: str | None = None
     year: int | None = None
+    metadata_attempted: bool = False
 
 
 @dataclass
@@ -1513,6 +1514,13 @@ class MusicCog(commands.Cog):
         """
         Resolve metadata (Genre/Year) using all available sources to find the earliest year and best genre.
         """
+        # Strict One-Time Check
+        if item.metadata_attempted:
+            logger.debug(f"Metadata resolution already attempted for '{item.title}'. Skipping.")
+            return
+        
+        item.metadata_attempted = True
+
         # Optimize: Return early if metadata is already present AND validated
         if item.genre and item.year:
             logger.debug(f"Metadata already resolved for '{item.title}' (Genre: {item.genre}, Year: {item.year}). Skipping.")
@@ -1604,15 +1612,32 @@ class MusicCog(commands.Cog):
             return
 
         try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=5.0
-            )
-        except asyncio.TimeoutError:
-            logger.warning(f"Metadata resolution timed out for '{item.title}' after 5s")
-            return
+            # Use asyncio.wait to support partial results (timeout=5.0)
+            # This allows us to keep Spotify/Discogs results even if MusicBrainz hangs
+            done, pending = await asyncio.wait(tasks, timeout=5.0)
+            
+            # Cancel pending (stuck) tasks
+            for p in pending:
+                p.cancel()
+                
+            results = []
+            for task in done:
+                try:
+                    if not task.cancelled():
+                        exc = task.exception()
+                        if exc:
+                            logger.warning(f"Metadata task failed: {exc}")
+                        else:
+                            results.append(task.result())
+                except Exception as e:
+                    logger.error(f"Error retrieving task result: {e}")
+
+            if not results and pending:
+                logger.warning(f"Metadata resolution returned no results (timeout) for '{item.title}'")
+                return
+
         except Exception as e:
-            logger.error(f"Metadata resolution failed: {e}")
+            logger.error(f"Metadata resolution critical failure: {e}")
             return
         
         # Aggregation Logic
