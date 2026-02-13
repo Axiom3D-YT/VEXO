@@ -1322,29 +1322,7 @@ function formatUptime(seconds) {
 }
 
 // Export to window for global access
-Object.assign(window, {
-    switchTab,
-    switchScope,
-    control,
-    changeLibraryPage,
-    selectGuild,
-    leaveGuild,
-    leaveServer,
-    saveServerSettings,
-    saveSettingsTab,
-    toggleNotifications,
-    viewUser,
-    openGlobalSettings,
-    initCharts,
-    updateCharts,
-    showPresetLoader,
-    closePresetModal,
-    loadPreset,
-    openAutogenerateModal,
-    closeAutogenModal,
-    applyAutogen,
-    toggleCustomModelInput
-});
+// Export to window for global access - moved to end of file
 
 function toggleCustomModelInput() {
     const select = document.getElementById('setting-groq-model');
@@ -1488,7 +1466,131 @@ function savePrompt() {
     closePromptEditor();
 }
 
-// Export to window for global access
+// PRESET & AUTOGEN IMPLEMENTATION
+
+function showPresetLoader() {
+    const modal = document.getElementById('preset-modal');
+    if (modal) modal.classList.add('active');
+}
+
+function closePresetModal() {
+    const modal = document.getElementById('preset-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function loadPreset(type) {
+    const presets = {
+        friend: {
+            name: "The Friend",
+            role: "You are a close friend hanging out. Relaxed, casual, and authentic.",
+            task: "Introduce the song like you're passing the aux cord.",
+            vocal_cues: "Warm, casual tone. Use contractions.",
+            guidelines: "Don't sound robotic. Be brief."
+        },
+        critic: {
+            name: "The Critic",
+            role: "You are a sophisticated music critic. Knowledgeable but slightly pretentious.",
+            task: "Analyze the track's composition or historical context briefly.",
+            vocal_cues: "Articulate, slightly haughty but passionate.",
+            guidelines: "Focus on technical details or genre context."
+        },
+        hype: {
+            name: "Hype Man",
+            role: "You are a high-energy club MC.",
+            task: "Get the crowd ready for the drop.",
+            vocal_cues: "Loud, energetic, fast-paced.",
+            guidelines: "Use exclamation points! shorter sentences."
+        },
+        jazz: {
+            name: "Jazz Cat",
+            role: "You are a smooth late-night jazz radio host.",
+            task: "Set a moody, atmospheric vibe.",
+            vocal_cues: "Deep, slow, smooth voice. Pauses for effect.",
+            guidelines: "Use poetic language. 'Cool', 'Groovy', 'Smooth'."
+        },
+        history: {
+            name: "History Buff",
+            role: "You are a music historian.",
+            task: "Share a fun fact or trivia about the song or year.",
+            vocal_cues: "Educational, clearly spoken.",
+            guidelines: "Did you know? Start with a fact."
+        },
+        zen: {
+            name: "Zen Master",
+            role: "You are a mindfulness guide.",
+            task: "Help the listener relax into the soundscape.",
+            vocal_cues: "Soft, whispery, calm.",
+            guidelines: "Focus on breath and feeling."
+        }
+    };
+
+    if (presets[type]) {
+        // We open the editor and fill it
+        openPromptEditor(-1); // New mode
+
+        // Timeout to let modal open (microtask)
+        setTimeout(() => {
+            const p = presets[type];
+            document.getElementById('edit-prompt-name').value = p.name;
+            document.getElementById('edit-prompt-role').value = p.role;
+            document.getElementById('edit-prompt-task').value = p.task;
+            document.getElementById('edit-prompt-vocal').value = p.vocal_cues;
+            document.getElementById('edit-prompt-guidelines').value = p.guidelines;
+        }, 50);
+    }
+    closePresetModal();
+}
+
+function openAutogenerateModal() {
+    const modal = document.getElementById('autogen-modal');
+    if (modal) modal.classList.add('active');
+}
+
+function closeAutogenModal() {
+    const modal = document.getElementById('autogen-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function applyAutogen() {
+    const persona = document.getElementById('autogen-persona').value;
+    const vibe = document.getElementById('autogen-vibe').value;
+    const detail = document.getElementById('autogen-detail').value;
+
+    // Logic to construct a prompt based on these valid values
+    // For now, we'll map them to a simple template
+    let role = "";
+    let guidelines = "";
+
+    switch (persona) {
+        case "DJ": role = "You are a professional radio DJ."; break;
+        case "Expert": role = "You are a music musicologist with deep knowledge."; break;
+        case "Fan": role = "You are the world's biggest fan of this artist."; break;
+        case "Rapper": role = "You are a hip-hop MC with flow."; break;
+        case "Poet": role = "You are a poet describing the soundscape."; break;
+    }
+
+    role += ` Your vibe is ${vibe}.`;
+
+    if (detail === "brief") guidelines = "Keep it extremely short. One punchy sentence.";
+    else if (detail === "balanced") guidelines = "Write 2-3 engaging sentences.";
+    else if (detail === "deep") guidelines = "Write a rich, detailed paragraph.";
+
+    openPromptEditor(-1);
+    setTimeout(() => {
+        document.getElementById('edit-prompt-name').value = `Auto: ${persona} (${vibe})`;
+        document.getElementById('edit-prompt-role').value = role;
+        document.getElementById('edit-prompt-task').value = "Introduce the upcoming track based on your persona.";
+        document.getElementById('edit-prompt-guidelines').value = guidelines;
+        document.getElementById('edit-prompt-vocal').value = `Match the ${vibe} energy.`;
+    }, 50);
+
+    closeAutogenModal();
+}
+
+function addGroqPrompt() {
+    openPromptEditor(-1);
+}
+
 // Final Export to window for global access
 Object.assign(window, {
     switchTab,
