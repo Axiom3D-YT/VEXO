@@ -1433,11 +1433,11 @@ function openPromptEditor(index = -1) {
     document.getElementById('edit-prompt-words').value = data.word_count || '';
     document.getElementById('edit-prompt-format').value = data.output_format || '';
 
-    modal.classList.add('active');
+    modal.classList.add('open');
 }
 
 function closePromptEditor() {
-    document.getElementById('prompt-editor-modal').classList.remove('active');
+    document.getElementById('prompt-editor-modal').classList.remove('open');
 }
 
 function savePrompt() {
@@ -1470,12 +1470,12 @@ function savePrompt() {
 
 function showPresetLoader() {
     const modal = document.getElementById('preset-modal');
-    if (modal) modal.classList.add('active');
+    if (modal) modal.classList.add('open');
 }
 
 function closePresetModal() {
     const modal = document.getElementById('preset-modal');
-    if (modal) modal.classList.remove('active');
+    if (modal) modal.classList.remove('open');
 }
 
 function loadPreset(type) {
@@ -1543,12 +1543,12 @@ function loadPreset(type) {
 
 function openAutogenerateModal() {
     const modal = document.getElementById('autogen-modal');
-    if (modal) modal.classList.add('active');
+    if (modal) modal.classList.add('open');
 }
 
 function closeAutogenModal() {
     const modal = document.getElementById('autogen-modal');
-    if (modal) modal.classList.remove('active');
+    if (modal) modal.classList.remove('open');
 }
 
 async function applyAutogen() {
