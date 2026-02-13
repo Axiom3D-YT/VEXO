@@ -1063,6 +1063,22 @@ async function loadSettingsTab() {
             const sGroqO = document.getElementById('setting-groq-offset');
             if (sGroqO) sGroqO.value = data.groq_offset || 0;
 
+            const sGroqModel = document.getElementById('setting-groq-model');
+            const sGroqModelCustom = document.getElementById('setting-groq-model-custom');
+            if (sGroqModel && sGroqModelCustom) {
+                const model = data.groq_model || 'groq/compound-mini';
+                // Check if model is in options
+                const options = Array.from(sGroqModel.options).map(o => o.value);
+                if (options.includes(model)) {
+                    sGroqModel.value = model;
+                    sGroqModelCustom.style.display = 'none';
+                } else {
+                    sGroqModel.value = 'custom';
+                    sGroqModelCustom.value = model;
+                    sGroqModelCustom.style.display = 'block';
+                }
+            }
+
             renderGroqPrompts(data.groq_custom_prompts || []);
 
             // TTS Settings
@@ -1174,6 +1190,9 @@ async function saveServerSettings() {
         groq_enabled: document.getElementById('setting-groq-enabled').checked,
         groq_send_text: document.getElementById('setting-groq-text').checked,
         groq_offset: parseInt(document.getElementById('setting-groq-offset').value || 0),
+        groq_model: (document.getElementById('setting-groq-model').value === 'custom')
+            ? document.getElementById('setting-groq-model-custom').value
+            : document.getElementById('setting-groq-model').value,
         groq_custom_prompts: getGroqPrompts(),
         tts_enabled: document.getElementById('setting-tts-enabled').checked,
         tts_voice: document.getElementById('setting-tts-voice').value,
@@ -1297,8 +1316,17 @@ Object.assign(window, {
     loadPreset,
     openAutogenerateModal,
     closeAutogenModal,
-    applyAutogen
+    applyAutogen,
+    toggleCustomModelInput
 });
+
+function toggleCustomModelInput() {
+    const select = document.getElementById('setting-groq-model');
+    const custom = document.getElementById('setting-groq-model-custom');
+    if (select && custom) {
+        custom.style.display = (select.value === 'custom') ? 'block' : 'none';
+    }
+}
 
 // Helper functions for advanced settings
 function toggleVisible(id, show) {

@@ -495,6 +495,26 @@
                                 </div>
 
                                 <div class="form-group" style="margin-top: 1.5rem;">
+                                    <label class="form-label">Groq Model</label>
+                                    <select id="setting-groq-model" class="form-input" style="max-width: 300px;"
+                                        onchange="toggleCustomModelInput()">
+                                        <option value="groq/compound-mini">Compound Mini (Fastest)</option>
+                                        <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
+                                        <option value="llama3-70b-8192">Llama 3 70B (High Quality)</option>
+                                        <option value="mixtral-8x7b-32768">Mixtral 8x7B (Balanced)</option>
+                                        <option value="gemma2-9b-it">Gemma 2 9B IT</option>
+                                        <option value="custom">Custom...</option>
+                                    </select>
+                                    <input type="text" id="setting-groq-model-custom" class="form-input"
+                                        placeholder="Enter custom model ID"
+                                        style="max-width: 300px; margin-top: 0.5rem; display: none;">
+                                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+                                        Select the AI model for script generation. Compound Mini is recommended for
+                                        speed.
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-top: 1.5rem;">
                                     <label class="form-label">Timing Offset (Seconds)</label>
                                     <input type="number" id="setting-groq-offset" class="form-input"
                                         placeholder="e.g. 5 or -5" style="max-width: 150px;">

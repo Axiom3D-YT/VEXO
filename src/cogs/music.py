@@ -1076,7 +1076,9 @@ class MusicCog(commands.Cog):
         groq_enabled = True
         groq_send_text = True
         groq_offset = 0
+        groq_offset = 0
         groq_custom_prompts = []
+        groq_model = None
         tts_enabled = False
         tts_voice = "en_us_001"
         tts_slow = False
@@ -1092,7 +1094,9 @@ class MusicCog(commands.Cog):
                 groq_enabled = guild_settings.get("groq_enabled", True)
                 groq_send_text = guild_settings.get("groq_send_text", True)
                 groq_offset = int(guild_settings.get("groq_offset", 0))
+                groq_offset = int(guild_settings.get("groq_offset", 0))
                 groq_custom_prompts = guild_settings.get("groq_custom_prompts", [])
+                groq_model = guild_settings.get("groq_model")
                 
                 tts_enabled = guild_settings.get("tts_enabled", False)
                 tts_voice = guild_settings.get("tts_voice", "en_us_001")
@@ -1130,7 +1134,7 @@ class MusicCog(commands.Cog):
                 if enabled_prompts:
                     system_prompt = random.choice(enabled_prompts)
             
-            script_text = await self.groq.generate_script(item.title, item.artist, system_prompt=system_prompt)
+            script_text = await self.groq.generate_script(item.title, item.artist, system_prompt=system_prompt, model=groq_model)
             
             if not script_text:
                 return

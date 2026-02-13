@@ -78,28 +78,38 @@ STRICT GUIDELINES: Be extremely concise. Focus on one feeling or image. Let the 
         if not self.api_key:
             logger.warning("GROQ_API_KEY not found in environment variables. Groq service will be disabled.")
             
-    async def generate_script(self, song: str, artist: str, system_prompt: str | None = None) -> str | None:
+    async def generate_script(self, song_title: str, artist_name: str, system_prompt: str = None, model: str = None) -> str | None:
         """
-        Generate a DJ script for the given song and artist using Groq API.
-        Returns the script text or None if generation fails.
+        Generate a DJ script for a song.
+        
+        Args:
+            song_title: Title of the song
+            artist_name: Name of the artist
+            system_prompt: Optional custom system prompt overrides
+            model: Optional model to use (default: groq/compound-mini)
         """
         if not self.api_key:
             return None
-            
+
+        prompt = system_prompt
+        if not prompt:
+             # Select a random preset if no custom prompt provided
+            import random
+            preset_name = random.choice(list(self.PRESETS.keys()))
+            prompt = self.PRESETS[preset_name]["prompt"]
+
+        # Use the provided model, or fall back to a default high-speed model
+        model_to_use = model if model else "groq/compound-mini"
+
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-
-        user_content = f"""Song Title: {song}
-Artist: {artist}
-Max Word Count: 25
-Output Requirement: JSON object valid string."""
-
-        prompt = system_prompt or self.SYSTEM_PROMPT
+        
+        user_content = f"Song: {song_title}\nArtist: {artist_name}"
 
         payload = {
-            "model": "groq/compound-mini",
+            "model": model_to_use,
             "messages": [
                 {"role": "system", "content": prompt},
                 {"role": "user",   "content": user_content}
