@@ -1489,6 +1489,7 @@ function savePrompt() {
 }
 
 // Export to window for global access
+// Final Export to window for global access
 Object.assign(window, {
     switchTab,
     switchScope,
@@ -1511,112 +1512,12 @@ Object.assign(window, {
     closeAutogenModal,
     applyAutogen,
     toggleCustomModelInput,
+    // Groq Prompt Editor Functions
     renderGroqPrompts,
     openPromptEditor,
     closePromptEditor,
     savePrompt,
     deleteGroqPrompt,
-    toggleGroqPrompt
+    toggleGroqPrompt,
+    addGroqPrompt
 });
-
-// Preset and Autogen controls
-const GROQ_PRESETS = {
-    friend: {
-        text: `ROLE: You are a Cool, Knowledgeable Music Curator. You're not a radio DJ with a "voice"; you're that friend who always knows the perfect song for the moment. Your vibe is authentic, relaxed, and conversational.
-TASK: Write a short, natural intro for the specified track.
-OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
-STRICT GUIDELINES: Natural Flow, Stay relaxed, reveal info naturally, no stage directions.`
-    },
-    critic: {
-        text: `ROLE: You are a sharp, slightly snarky Music Critic. You analyze the production, the era, and the artist's legacy. You're technical but accessible.
-TASK: Write a sharp intro for the specified track.
-OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
-STRICT GUIDELINES: Be analytical, technical details, avoid being overly 'nice', no stage directions.`
-    },
-    hype: {
-        text: `ROLE: You are a high-energy Radio Hype Man. You're all about the energy, the club vibes, and getting the listeners moving.
-TASK: Write an energetic intro for the specified track.
-OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
-STRICT GUIDELINES: High energy, focus on the beat, keep it punchy, no stage directions.`
-    },
-    jazz: {
-        text: `ROLE: You are a smooth, poetic Jazz Cat. Think late-night, smoky lounges, and deep appreciation for the craft.
-TASK: Write a smooth, poetic intro for the specified track.
-OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
-STRICT GUIDELINES: Poetic language, sensory descriptions, relaxed tempo, focus on soul, no stage directions.`
-    },
-    history: {
-        text: `ROLE: You are an Encyclopedia of Music History. You know every sample, every influence, and every recording session detail.
-TASK: Write an educational, trivia-focused intro for the specified track.
-OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
-STRICT GUIDELINES: Trivia based, educational, historical context, professional passion, no stage directions.`
-    },
-    zen: {
-        text: `ROLE: You are a Minimalist Zen Master. You care about the emotion and the present moment. Your words are few but chosen with care.
-TASK: Write a minimalist intro for the specified track.
-OUTPUT FORMAT: JSON with "song", "artist", "genre", "release_date", "text".
-STRICT GUIDELINES: Extremely concise, focus on one feeling, minimal words, no stage directions.`
-    }
-};
-
-function showPresetLoader() { document.getElementById('preset-modal').style.display = 'flex'; }
-function closePresetModal() { document.getElementById('preset-modal').style.display = 'none'; }
-function loadPreset(id) {
-    const preset = GROQ_PRESETS[id];
-    if (preset) {
-        addGroqPrompt(preset.text, true);
-        closePresetModal();
-    }
-}
-
-function openAutogenerateModal() { document.getElementById('autogen-modal').style.display = 'flex'; }
-function closeAutogenModal() { document.getElementById('autogen-modal').style.display = 'none'; }
-function applyAutogen() {
-    const persona = document.getElementById('autogen-persona').value;
-    const vibe = document.getElementById('autogen-vibe').value;
-    const detail = document.getElementById('autogen-detail').value;
-
-    let prompt = `ROLE: You are a ${vibe} ${persona}. You talk to the listeners with a ${vibe} attitude.\n`;
-    prompt += `TASK: Write an intro for the song that is ${detail === 'brief' ? 'very short and punchy' : detail === 'balanced' ? 'engaging and balanced' : 'rich with descriptive details'}.\n`;
-    prompt += `OUTPUT FORMAT: Return a valid JSON object with: "song", "artist", "genre", "release_date", and "text".\n`;
-    prompt += `GUIDELINES: Stay in character as a ${persona}. Focus on the ${vibe} mood. Do NOT include any stage directions or bracketed text.`;
-
-    addGroqPrompt(prompt, true);
-    closeAutogenModal();
-}
-
-async function populateTTSVoices(selectedId) {
-    // If not fetched yet, simulate or fetch (for now we use hardcoded from plan if API doesn't exist)
-    const tiktok = document.getElementById('tts-voices-tiktok');
-    const gtts = document.getElementById('tts-voices-gtts');
-
-    // We could use the hardcoded list from VexoTTSService description
-    const voices = {
-        tiktok_voices: [
-            { "id": "en_us_ghostface", "name": "Ghost Face" },
-            { "id": "en_us_c3po", "name": "C3PO" },
-            { "id": "en_us_stitch", "name": "Stitch" },
-            { "id": "en_us_stormtrooper", "name": "Stormtrooper" },
-            { "id": "en_us_rocket", "name": "Rocket" },
-            { "id": "en_female_madam_leota", "name": "Madame Leota" },
-            { "id": "en_male_ghosthost", "name": "Ghost Host" },
-            { "id": "en_male_pirate", "name": "Pirate" },
-            { "id": "en_us_001", "name": "English US (Default)" },
-            { "id": "en_us_002", "name": "Jessie" },
-            { "id": "en_us_006", "name": "Joey" },
-            { "id": "en_us_007", "name": "Professor" },
-            { "id": "en_us_009", "name": "Scientist" },
-            { "id": "en_us_010", "name": "Confidence" }
-        ],
-        gtts_voices: [
-            { "id": "en", "name": "English (gTTS)" },
-            { "id": "it", "name": "Italian (gTTS)" },
-            { "id": "fr", "name": "French (gTTS)" }
-        ]
-    };
-
-    if (tiktok) tiktok.innerHTML = voices.tiktok_voices.map(v => `<option value="${v.id}" ${v.id === selectedId ? 'selected' : ''}>${v.name}</option>`).join('');
-    if (gtts) gtts.innerHTML = voices.gtts_voices.map(v => `<option value="${v.id}" ${v.id === selectedId ? 'selected' : ''}>${v.name}</option>`).join('');
-}
-
-window.addGroqPrompt = addGroqPrompt;
