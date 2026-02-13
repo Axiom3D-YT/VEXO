@@ -789,7 +789,7 @@ class MusicCog(commands.Cog):
                         if hasattr(self.bot, "db") and self.bot.db:
                             metadata_config = await guild_crud.get_setting(player.guild_id, "metadata_config")
                         
-                        await self._resolve_metadata(item, metadata_config)
+                        await self._resolve_metadata(item, player.guild_id, metadata_config)
                         
                         # Fallback: Populate from DB if Spotify failed or was unavailable
                         if (not item.year or not item.genre) and item.song_db_id:
@@ -1413,7 +1413,7 @@ class MusicCog(commands.Cog):
                                 guild_crud = GuildCRUD(self.bot.db)
                                 metadata_config = await guild_crud.get_setting(player.guild_id, "metadata_config")
                             
-                            await self._resolve_metadata(next_item, metadata_config)
+                            await self._resolve_metadata(next_item, player.guild_id, metadata_config)
                             logger.debug(f"Gapless Pre-fetch: Resolved metadata for: {next_item.title}")
                         except Exception as e:
                             logger.warning(f"Gapless Pre-fetch metadata failed: {e}")
@@ -1745,7 +1745,7 @@ class MusicCog(commands.Cog):
             except Exception as e:
                 logger.error(f"Error in AutoConnect loop: {e}")
 
-    async def _resolve_metadata(self, item: QueueItem, config: dict | None):
+    async def _resolve_metadata(self, item: QueueItem, guild_id: int, config: dict | None):
         """
         Resolve metadata (Genre/Year) using all available sources to find the earliest year and best genre.
         """
@@ -1761,7 +1761,7 @@ class MusicCog(commands.Cog):
             logger.debug(f"Metadata already resolved for '{item.title}' (Genre: {item.genre}, Year: {item.year}). Skipping.")
             return
 
-        logger.debug(f"DEBUG: _resolve_metadata called for '{item.title}'")
+        logger.debug(f"DEBUG: _resolve_metadata called for '{item.title}' in guild {guild_id}")
 
         # Default Config
         if not config:
@@ -1832,7 +1832,7 @@ class MusicCog(commands.Cog):
             g_crud = GuildCRUD(self.bot.db)
             # This is a bit expensive doing it per song?
             # Maybe just fetch specific keys
-            guild_settings = await g_crud.get_all_settings(item.guild_id)
+            guild_settings = await g_crud.get_all_settings(guild_id)
             
             if not guild_settings.get("groq_enabled", True):
                 return {"genres": [], "year": None}
