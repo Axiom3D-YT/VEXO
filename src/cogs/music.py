@@ -1823,10 +1823,16 @@ class MusicCog(commands.Cog):
             try:
                 return await self.bot.loop.run_in_executor(
                     None, self.musicbrainz.get_metadata, item.artist, clean_title
-                g_crud = GuildCRUD(self.bot.db)
-                # This is a bit expensive doing it per song?
-                # Maybe just fetch specific keys
-                guild_settings = await g_crud.get_all_settings(item.guild_id)
+                )
+            except Exception as e:
+                logger.error(f"MusicBrainz fetch failed: {e}")
+            return {"genres": [], "year": None}
+
+        async def fetch_groq_metadata():
+            g_crud = GuildCRUD(self.bot.db)
+            # This is a bit expensive doing it per song?
+            # Maybe just fetch specific keys
+            guild_settings = await g_crud.get_all_settings(item.guild_id)
             
             if not guild_settings.get("groq_enabled", True):
                 return {"genres": [], "year": None}
