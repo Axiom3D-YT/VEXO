@@ -1135,6 +1135,7 @@ class MusicCog(commands.Cog):
                     system_prompt = random.choice(enabled_prompts)
             
             script_text = await self.groq.generate_script(item.title, item.artist, system_prompt=system_prompt, model=groq_model)
+            logger.info(f"Requested DJ script with model: {groq_model}")
             
             if not script_text:
                 return

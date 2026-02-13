@@ -100,6 +100,7 @@ STRICT GUIDELINES: Be extremely concise. Focus on one feeling or image. Let the 
 
         # Use the provided model, or fall back to a default high-speed model
         model_to_use = model if model else "groq/compound-mini"
+        logger.info(f"GroqService using model: {model_to_use} (Requested: {model})")
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
