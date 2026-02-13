@@ -1097,6 +1097,7 @@ class MusicCog(commands.Cog):
                 groq_offset = int(guild_settings.get("groq_offset", 0))
                 groq_custom_prompts = guild_settings.get("groq_custom_prompts", [])
                 groq_model = guild_settings.get("groq_model")
+                groq_model_fallback = guild_settings.get("groq_model_fallback")
                 
                 tts_enabled = guild_settings.get("tts_enabled", False)
                 tts_voice = guild_settings.get("tts_voice", "en_us_001")
@@ -1134,8 +1135,14 @@ class MusicCog(commands.Cog):
                 if enabled_prompts:
                     system_prompt = random.choice(enabled_prompts)
             
-            script_text = await self.groq.generate_script(item.title, item.artist, system_prompt=system_prompt, model=groq_model)
-            logger.info(f"Requested DJ script with model: {groq_model}")
+            script_text = await self.groq.generate_script(
+                item.title, 
+                item.artist, 
+                system_prompt=system_prompt, 
+                model=groq_model,
+                fallback_model=groq_model_fallback
+            )
+            logger.info(f"Requested DJ script with model: {groq_model} (Fallback: {groq_model_fallback})")
             
             if not script_text:
                 return

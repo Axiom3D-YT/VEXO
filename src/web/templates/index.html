@@ -495,22 +495,42 @@
                                 </div>
 
                                 <div class="form-group" style="margin-top: 1.5rem;">
-                                    <label class="form-label">Groq Model</label>
+                                    <label class="form-label">Primary Request Model</label>
                                     <select id="setting-groq-model" class="form-input" style="max-width: 300px;"
                                         onchange="toggleCustomModelInput()">
+                                        <option value="groq/compound">Compound (Router)</option>
                                         <option value="groq/compound-mini">Compound Mini (Fastest)</option>
                                         <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
-                                        <option value="llama3-70b-8192">Llama 3 70B (High Quality)</option>
-                                        <option value="mixtral-8x7b-32768">Mixtral 8x7B (Balanced)</option>
+                                        <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                                        <option value="llama-4-scout-17b-16e-instruct">Llama 4 Scout 17B</option>
+                                        <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
                                         <option value="gemma2-9b-it">Gemma 2 9B IT</option>
+                                        <option value="openai/gpt-oss-120b">GPT-OSS 120B</option>
+                                        <option value="moonshotai/kimi-k2-instruct-0905">Kimi K2 Instruct</option>
+                                        <option value="qwen/qwen3-32b">Qwen 3 32B</option>
                                         <option value="custom">Custom...</option>
                                     </select>
                                     <input type="text" id="setting-groq-model-custom" class="form-input"
                                         placeholder="Enter custom model ID"
                                         style="max-width: 300px; margin-top: 0.5rem; display: none;">
                                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
-                                        Select the AI model for script generation. Compound Mini is recommended for
-                                        speed.
+                                        Select the primary AI model for script generation.
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-top: 1.5rem;">
+                                    <label class="form-label">Fallback Model (Rate Limit)</label>
+                                    <select id="setting-groq-model-fallback" class="form-input"
+                                        style="max-width: 300px;">
+                                        <option value="">None</option>
+                                        <option value="groq/compound-mini">Compound Mini (Fastest)</option>
+                                        <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
+                                        <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                                        <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                                        <option value="openai/gpt-oss-120b">GPT-OSS 120B</option>
+                                    </select>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+                                        If the primary model hits a rate limit, this model will be used immediately.
                                     </div>
                                 </div>
 

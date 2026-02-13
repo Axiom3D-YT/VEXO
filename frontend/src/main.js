@@ -1079,6 +1079,9 @@ async function loadSettingsTab() {
                 }
             }
 
+            const sGroqFallback = document.getElementById('setting-groq-model-fallback');
+            if (sGroqFallback) sGroqFallback.value = data.groq_model_fallback || '';
+
             renderGroqPrompts(data.groq_custom_prompts || []);
 
             // TTS Settings
@@ -1193,6 +1196,7 @@ async function saveServerSettings() {
         groq_model: (document.getElementById('setting-groq-model').value === 'custom')
             ? document.getElementById('setting-groq-model-custom').value
             : document.getElementById('setting-groq-model').value,
+        groq_model_fallback: document.getElementById('setting-groq-model-fallback').value,
         groq_custom_prompts: getGroqPrompts(),
         tts_enabled: document.getElementById('setting-tts-enabled').checked,
         tts_voice: document.getElementById('setting-tts-voice').value,

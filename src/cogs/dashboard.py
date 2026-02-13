@@ -329,7 +329,7 @@ class DashboardCog(commands.Cog):
             new_settings = [
                 "twenty_four_seven", "auto_connect", "auto_connect_channel",
                 "groq_enabled", "groq_send_text", "groq_offset", "groq_custom_prompts",
-                "groq_model",
+                "groq_model", "groq_model_fallback",
                 "tts_enabled", "tts_voice", "tts_slow"
             ]
             for key in new_settings:

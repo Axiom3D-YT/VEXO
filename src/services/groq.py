@@ -78,15 +78,16 @@ STRICT GUIDELINES: Be extremely concise. Focus on one feeling or image. Let the 
         if not self.api_key:
             logger.warning("GROQ_API_KEY not found in environment variables. Groq service will be disabled.")
             
-    async def generate_script(self, song_title: str, artist_name: str, system_prompt: str = None, model: str = None) -> str | None:
+    async def generate_script(self, song_title: str, artist_name: str, system_prompt: str = None, model: str = None, fallback_model: str = None) -> str | None:
         """
-        Generate a DJ script for a song.
+        Generate a DJ script for a song with fallback support.
         
         Args:
             song_title: Title of the song
             artist_name: Name of the artist
             system_prompt: Optional custom system prompt overrides
-            model: Optional model to use (default: groq/compound-mini)
+            model: Primary model to use
+            fallback_model: Secondary model to use if primary fails
         """
         if not self.api_key:
             return None
@@ -98,52 +99,68 @@ STRICT GUIDELINES: Be extremely concise. Focus on one feeling or image. Let the 
             preset_name = random.choice(list(self.PRESETS.keys()))
             prompt = self.PRESETS[preset_name]["prompt"]
 
-        # Use the provided model, or fall back to a default high-speed model
-        model_to_use = model if model else "groq/compound-mini"
-        logger.info(f"GroqService using model: {model_to_use} (Requested: {model})")
+        # Define models to try
+        models_to_try = []
+        if model:
+            models_to_try.append(model)
+        if fallback_model and fallback_model != model:
+            models_to_try.append(fallback_model)
+        
+        # If no models specified or all exhausted, ensure we have a default
+        if not models_to_try:
+            models_to_try.append("groq/compound-mini")
+
+        user_content = f"Song: {song_title}\nArtist: {artist_name}"
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
-        user_content = f"Song: {song_title}\nArtist: {artist_name}"
 
-        payload = {
-            "model": model_to_use,
-            "messages": [
-                {"role": "system", "content": prompt},
-                {"role": "user",   "content": user_content}
-            ],
-            "temperature": 0.7,
-            "response_format": {"type": "json_object"}
-        }
-
-        start_time = time.time()
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.API_URL, headers=headers, json=payload) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        content = data["choices"][0]["message"]["content"]
-                        try:
-                            json_content = json.loads(content)
-                            script_text = json_content.get("text")
-                            elapsed = time.time() - start_time
-                            logger.info(f"Groq generated script for '{song_title}' in {elapsed:.2f}s")
-                            return script_text
-                        except json.JSONDecodeError:
-                            logger.error(f"Groq returned invalid JSON: {content}")
-                            return None
-                    elif resp.status == 401:
-                        logger.error("Groq authentication failed. Check API key.")
-                    elif resp.status == 429:
-                        logger.warning("Groq rate limit hit.")
-                    else:
-                        text = await resp.text()
-                        logger.error(f"Groq API error {resp.status}: {text}")
-                        
-        except Exception as e:
-            logger.error(f"Failed to generate Groq script: {e}")
+        for current_model in models_to_try:
+            logger.info(f"GroqService requesting script using model: {current_model}")
             
+            payload = {
+                "model": current_model,
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user",   "content": user_content}
+                ],
+                "temperature": 0.7,
+                "response_format": {"type": "json_object"}
+            }
+
+            start_time = time.time()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(self.API_URL, headers=headers, json=payload) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            content = data["choices"][0]["message"]["content"]
+                            try:
+                                json_content = json.loads(content)
+                                script_text = json_content.get("text")
+                                elapsed = time.time() - start_time
+                                logger.info(f"Groq generated script for '{song_title}' in {elapsed:.2f}s using {current_model}")
+                                return script_text
+                            except json.JSONDecodeError:
+                                logger.error(f"Groq returned invalid JSON from {current_model}: {content}")
+                                # Invalid JSON might be model specific, try next model? 
+                                # Usually implies model failure to follow instructions.
+                                continue 
+                        elif resp.status == 401:
+                            logger.error("Groq authentication failed. Check API key.")
+                            return None # Auth fails for all models
+                        elif resp.status == 429:
+                            logger.warning(f"Groq rate limit hit for {current_model}. Trying fallback if available...")
+                        else:
+                            text = await resp.text()
+                            logger.error(f"Groq API error {resp.status} for {current_model}: {text}")
+                            
+            except Exception as e:
+                logger.error(f"Failed to generate Groq script with {current_model}: {e}")
+            
+            # If we are here, the current model failed. Loop continues to next model.
+        
+        logger.error("All Groq models failed to generate script.")
         return None
