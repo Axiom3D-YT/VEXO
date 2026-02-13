@@ -1128,27 +1128,29 @@ class MusicCog(commands.Cog):
                 # Determine which system prompt to use
                 import random
                 system_prompt = None
+                prompt_name = "default"
                 if groq_custom_prompts:
                     # Handle both old (string) and new (dict) prompt formats
                     # We prioritize properly structured dicts now
                     valid_prompts = []
-                    for p in groq_custom_prompts:
+                    for i, p in enumerate(groq_custom_prompts):
                         if isinstance(p, dict):
                             if p.get("enabled", True):
                                 # If it has 'role' it's a new structure, pass the whole dict
                                 if "role" in p:
-                                    valid_prompts.append(p)
+                                    valid_prompts.append((p, p.get("name", f"custom_{i+1}")))
                                 # Fallback for old style dicts if any exist during migration
                                 elif "text" in p:
-                                    valid_prompts.append(p["text"])
+                                    valid_prompts.append((p["text"], p.get("name", f"custom_{i+1}")))
                         elif isinstance(p, str):
-                            valid_prompts.append(p)
+                            valid_prompts.append((p, f"custom_{i+1}"))
                     
                     if valid_prompts:
-                        system_prompt = random.choice(valid_prompts)
+                        system_prompt, prompt_name = random.choice(valid_prompts)
                 
                 # Call Groq Service
                 # Note: generate_script now returns a DICT with metadata+text
+                logger.info(f"Requesting DJ script with prompt: {prompt_name} (model: {groq_model})")
                 result = await self.groq.generate_script(
                     item.title, 
                     item.artist, 
@@ -1161,7 +1163,7 @@ class MusicCog(commands.Cog):
                     script_text = result["text"]
                     # We could also update metadata here if it was missing?
                     # But usually this happens in _resolve_metadata now.
-                    logger.info(f"Requested DJ script with model: {groq_model}")
+                    logger.info(f"Generated DJ script with prompt: {prompt_name} (model: {groq_model})")
                 else:
                     script_text = None
             
@@ -1763,14 +1765,15 @@ class MusicCog(commands.Cog):
 
         logger.debug(f"DEBUG: _resolve_metadata called for '{item.title}' in guild {guild_id}")
 
-        # Default Config
+        # Default Config (Groq first for script pre-caching)
         if not config:
             config = {
                 "strategy": "consensus", # Default to consensus for accuracy
                 "engines": {
-                    "spotify": {"enabled": True, "priority": 1},
-                    "discogs": {"enabled": True, "priority": 2},
-                    "musicbrainz": {"enabled": True, "priority": 3}
+                    "groq": {"enabled": True, "priority": 1},
+                    "spotify": {"enabled": True, "priority": 2},
+                    "discogs": {"enabled": True, "priority": 3},
+                    "musicbrainz": {"enabled": True, "priority": 4}
                 }
             }
         
@@ -1844,21 +1847,23 @@ class MusicCog(commands.Cog):
             # Select Prompt
             import random
             system_prompt = None
+            prompt_name = "default"
             if groq_custom_prompts:
                  valid_prompts = []
-                 for p in groq_custom_prompts:
+                 for i, p in enumerate(groq_custom_prompts):
                     if isinstance(p, dict):
                         if p.get("enabled", True):
-                            if "role" in p: valid_prompts.append(p)
-                            elif "text" in p: valid_prompts.append(p["text"])
+                            if "role" in p: valid_prompts.append((p, p.get("name", f"custom_{i+1}")))
+                            elif "text" in p: valid_prompts.append((p["text"], p.get("name", f"custom_{i+1}")))
                     elif isinstance(p, str):
-                        valid_prompts.append(p)
+                        valid_prompts.append((p, f"custom_{i+1}"))
                  if valid_prompts:
-                    system_prompt = random.choice(valid_prompts)
+                    system_prompt, prompt_name = random.choice(valid_prompts)
 
             try:
                 # Generate!
-                result = await self.bot.groq.generate_script(
+                logger.info(f"Generating Groq metadata with prompt: {prompt_name} (model: {groq_model})")
+                result = await self.groq.generate_script(
                     item.title, 
                     item.artist, 
                     system_prompt=system_prompt, 
@@ -1907,11 +1912,11 @@ class MusicCog(commands.Cog):
         # BUT... we want the script pre-generation to happen ALWAYS if Groq is enabled.
         # So we should force run it even if it's not in 'engines' for metadata voting.
         
-        # Check if Groq is already in active_engines
+        # Groq should always be included for script pre-caching, even if not in config
+        # If it's already in active_engines, keep its configured priority
+        # Otherwise, add it with low priority (but it will still run in parallel)
         groq_in_engines = any(e[0] == "groq" for e in active_engines)
         if not groq_in_engines:
-            # Add it as a hidden task just for script generation?
-            # Or just append it with low priority
             active_engines.append(("groq", 999))
             
         # Execute Parallel Requests (Consensus/Aggregation)
