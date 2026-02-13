@@ -59,6 +59,8 @@ class GuildPlayer:
     last_np_msg: discord.Message | None = None
     last_script_msg: discord.Message | None = None # Track the DJ Script message
     _queue_counter: int = 0  # To maintain FIFO in PriorityQueue
+    tts_task: asyncio.Task | None = None  # Scheduled TTS task
+    pending_script: str | None = None  # DJ script to speak
 
 
 class NowPlayingView(discord.ui.View):
@@ -1064,7 +1066,7 @@ class MusicCog(commands.Cog):
         return None
     
     async def _send_dj_script(self, player: GuildPlayer, item: QueueItem):
-        """Generate and send/edit a DJ script for the current song."""
+        """Generate and schedule DJ script for the current song."""
         # 1. Check if we have a text channel
         if not player.text_channel_id:
             return
@@ -1076,7 +1078,6 @@ class MusicCog(commands.Cog):
         # 2. Fetch Guild Settings for Groq and TTS
         groq_enabled = True
         groq_send_text = True
-        groq_offset = 0
         groq_offset = 0
         groq_custom_prompts = []
         groq_model = None
@@ -1095,7 +1096,6 @@ class MusicCog(commands.Cog):
                 groq_enabled = guild_settings.get("groq_enabled", True)
                 groq_send_text = guild_settings.get("groq_send_text", True)
                 groq_offset = int(guild_settings.get("groq_offset", 0))
-                groq_offset = int(guild_settings.get("groq_offset", 0))
                 groq_custom_prompts = guild_settings.get("groq_custom_prompts", [])
                 groq_model = guild_settings.get("groq_model")
                 groq_model_fallback = guild_settings.get("groq_model_fallback")
@@ -1109,16 +1109,7 @@ class MusicCog(commands.Cog):
             except Exception as e:
                 logger.error(f"Failed to fetch Groq/TTS settings: {e}")
 
-        # 3. Apply Timing Offset
-        if groq_offset > 0:
-            await asyncio.sleep(groq_offset)
-        elif groq_offset < 0:
-            # For negative offset, we can't really go back in time, 
-            # but usually this is used to start early if possible.
-            # In this implementation, we just proceed immediately for negative.
-            pass
-
-        # 4. Generate Script (Non-blocking)
+        # 3. Generate Script (Non-blocking)
         try:
             # Check cache first
             if item.script_text:
@@ -1150,7 +1141,7 @@ class MusicCog(commands.Cog):
                 
                 # Call Groq Service
                 # Note: generate_script now returns a DICT with metadata+text
-                logger.info(f"Requesting DJ script with prompt: {prompt_name} (model: {groq_model})")
+                logger.info(f"Request DJ script with prompt: {prompt_name} (model: {groq_model})")
                 result = await self.groq.generate_script(
                     item.title, 
                     item.artist, 
@@ -1161,49 +1152,107 @@ class MusicCog(commands.Cog):
                 
                 if result and "text" in result:
                     script_text = result["text"]
-                    # We could also update metadata here if it was missing?
-                    # But usually this happens in _resolve_metadata now.
+                    # Cache it for future use
+                    item.script_text = script_text
                     logger.info(f"Generated DJ script with prompt: {prompt_name} (model: {groq_model})")
                 else:
                     script_text = None
             
             if not script_text:
                 return
-                
-            # 5. TTS Output
-            if tts_enabled:
-                # We need a voice channel to speak in
-                if player.voice_client and player.voice_client.channel:
-                    await self.tts.speak(
-                        guild_id=player.guild_id,
-                        channel_id=player.voice_client.channel.id,
-                        message=script_text,
-                        voice=tts_voice,
-                        slow=tts_slow
-                    )
 
-            # 6. Text Output
-            if groq_send_text:
-                content = f"```\n{script_text}\n```"
+            # 4. Calculate when to speak/display based on timing offset
+            # Negative offset = speak BEFORE current song ends (e.g., -10 = 10s before end)
+            # Positive offset = speak AFTER new song starts (e.g., +5 = 5s after start)
+            # Zero offset = speak immediately when song starts
+            
+            delay_seconds = 0
+            if groq_offset < 0 and item.duration_seconds:
+                # Negative: calculate when to speak before song ends
+                # speak_at = duration - abs(offset)
+                speak_at = max(0, item.duration_seconds + groq_offset)  # groq_offset is negative
+                delay_seconds = speak_at
+                logger.debug(f"TTS scheduled for {speak_at}s (duration={item.duration_seconds}s, offset={groq_offset}s)")
+            elif groq_offset > 0:
+                # Positive: speak X seconds after song starts
+                delay_seconds = groq_offset
+                logger.debug(f"TTS scheduled for +{groq_offset}s after start")
+            else:
+                # Zero: speak immediately
+                delay_seconds = 0
+
+            # 5. Schedule TTS (if enabled) and send text
+            if delay_seconds > 0:
+                # Schedule TTS to speak later
+                await self._schedule_tts(player, script_text, delay_seconds, tts_enabled, tts_voice, tts_slow, groq_send_text, channel)
+            else:
+                # Speak immediately
+                await self._speak_and_send_script(player, script_text, tts_enabled, tts_voice, tts_slow, groq_send_text, channel)
                 
-                msg_sent = False
-                if player.last_script_msg:
-                    try:
-                        await player.last_script_msg.edit(content=content)
-                        msg_sent = True
-                    except (discord.NotFound, discord.Forbidden):
-                        player.last_script_msg = None
-                    except Exception as e:
-                        logger.warning(f"Failed to edit DJ script message: {e}")
-                
-                if not msg_sent:
-                    try:
-                        player.last_script_msg = await channel.send(content)
-                    except Exception as e:
-                        logger.error(f"Failed to send DJ script message: {e}")
-                        
         except Exception as e:
             logger.error(f"Error in DJ script flow: {e}")
+
+    async def _schedule_tts(self, player: GuildPlayer, script: str, delay: float, tts_enabled: bool, tts_voice: str, tts_slow: bool, send_text: bool, channel):
+        """Schedule TTS to speak after a delay."""
+        # Cancel previous task if exists
+        if player.tts_task and not player.tts_task.done():
+            player.tts_task.cancel()
+        
+        player.pending_script = script
+        player.tts_task = asyncio.create_task(
+            self._delayed_tts(player, delay, tts_enabled, tts_voice, tts_slow, send_text, channel)
+        )
+
+    async def _delayed_tts(self, player: GuildPlayer, delay: float, tts_enabled: bool, tts_voice: str, tts_slow: bool, send_text: bool, channel):
+        """Wait then speak the pending script."""
+        try:
+            await asyncio.sleep(delay)
+            # Delay finished naturally, speak now
+            if player.pending_script:
+                await self._speak_and_send_script(player, player.pending_script, tts_enabled, tts_voice, tts_slow, send_text, channel)
+                player.pending_script = None
+        except asyncio.CancelledError:
+            # Task was cancelled (song skipped), speak immediately
+            logger.debug("TTS task cancelled (skip detected), speaking immediately")
+            if player.pending_script:
+                await self._speak_and_send_script(player, player.pending_script, tts_enabled, tts_voice, tts_slow, send_text, channel)
+                player.pending_script = None
+            raise  # Re-raise to properly handle the cancellation
+
+    async def _speak_and_send_script(self, player: GuildPlayer, script_text: str, tts_enabled: bool, tts_voice: str, tts_slow: bool, send_text: bool, channel):
+        """Speak via TTS and/or send as text message."""
+        # TTS Output
+        if tts_enabled and player.voice_client and player.voice_client.channel:
+            try:
+                await self.tts.speak(
+                    guild_id=player.guild_id,
+                    channel_id=player.voice_client.channel.id,
+                    message=script_text,
+                    voice=tts_voice,
+                    slow=tts_slow
+                )
+            except Exception as e:
+                logger.error(f"Failed to speak TTS: {e}")
+
+        # Text Output
+        if send_text:
+            content = f"```\n{script_text}\n```"
+            
+            msg_sent = False
+            if player.last_script_msg:
+                try:
+                    await player.last_script_msg.edit(content=content)
+                    msg_sent = True
+                except (discord.NotFound, discord.Forbidden):
+                    player.last_script_msg = None
+                except Exception as e:
+                    logger.warning(f"Failed to edit DJ script message: {e}")
+            
+            if not msg_sent:
+                try:
+                    player.last_script_msg = await channel.send(content)
+                except Exception as e:
+                    logger.error(f"Failed to send DJ script message: {e}")
 
     async def _send_now_playing(self, player: GuildPlayer):
         """Send the Now Playing embed to the text channel."""
