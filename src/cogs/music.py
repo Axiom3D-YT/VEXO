@@ -37,6 +37,7 @@ class QueueItem:
     duration_seconds: int | None = None
     genre: str | None = None
     year: int | None = None
+    script_text: str | None = None # Cache for AI script
     metadata_attempted: bool = False
 
 
@@ -1119,30 +1120,50 @@ class MusicCog(commands.Cog):
 
         # 4. Generate Script (Non-blocking)
         try:
-            # Determine which system prompt to use
-            import random
-            system_prompt = None
-            if groq_custom_prompts:
-                # Handle both old (string) and new (dict) prompt formats
-                enabled_prompts = []
-                for p in groq_custom_prompts:
-                    if isinstance(p, dict):
-                        if p.get("enabled", True):
-                            enabled_prompts.append(p.get("text"))
-                    else:
-                        enabled_prompts.append(p)
+            # Check cache first
+            if item.script_text:
+                script_text = item.script_text
+                logger.info(f"Using cached DJ script for {item.title}")
+            else:
+                # Determine which system prompt to use
+                import random
+                system_prompt = None
+                if groq_custom_prompts:
+                    # Handle both old (string) and new (dict) prompt formats
+                    # We prioritize properly structured dicts now
+                    valid_prompts = []
+                    for p in groq_custom_prompts:
+                        if isinstance(p, dict):
+                            if p.get("enabled", True):
+                                # If it has 'role' it's a new structure, pass the whole dict
+                                if "role" in p:
+                                    valid_prompts.append(p)
+                                # Fallback for old style dicts if any exist during migration
+                                elif "text" in p:
+                                    valid_prompts.append(p["text"])
+                        elif isinstance(p, str):
+                            valid_prompts.append(p)
+                    
+                    if valid_prompts:
+                        system_prompt = random.choice(valid_prompts)
                 
-                if enabled_prompts:
-                    system_prompt = random.choice(enabled_prompts)
-            
-            script_text = await self.groq.generate_script(
-                item.title, 
-                item.artist, 
-                system_prompt=system_prompt, 
-                model=groq_model,
-                fallback_model=groq_model_fallback
-            )
-            logger.info(f"Requested DJ script with model: {groq_model} (Fallback: {groq_model_fallback})")
+                # Call Groq Service
+                # Note: generate_script now returns a DICT with metadata+text
+                result = await self.groq.generate_script(
+                    item.title, 
+                    item.artist, 
+                    system_prompt=system_prompt, 
+                    model=groq_model,
+                    fallback_model=groq_model_fallback
+                )
+                
+                if result and "text" in result:
+                    script_text = result["text"]
+                    # We could also update metadata here if it was missing?
+                    # But usually this happens in _resolve_metadata now.
+                    logger.info(f"Requested DJ script with model: {groq_model}")
+                else:
+                    script_text = None
             
             if not script_text:
                 return
@@ -1802,23 +1823,95 @@ class MusicCog(commands.Cog):
             try:
                 return await self.bot.loop.run_in_executor(
                     None, self.musicbrainz.get_metadata, item.artist, clean_title
+                g_crud = GuildCRUD(self.bot.db)
+                # This is a bit expensive doing it per song?
+                # Maybe just fetch specific keys
+                guild_settings = await g_crud.get_all_settings(item.guild_id)
+            
+            if not guild_settings.get("groq_enabled", True):
+                return {"genres": [], "year": None}
+
+            groq_model = guild_settings.get("groq_model")
+            groq_model_fallback = guild_settings.get("groq_model_fallback")
+            groq_custom_prompts = guild_settings.get("groq_custom_prompts", [])
+            
+            # Select Prompt
+            import random
+            system_prompt = None
+            if groq_custom_prompts:
+                 valid_prompts = []
+                 for p in groq_custom_prompts:
+                    if isinstance(p, dict):
+                        if p.get("enabled", True):
+                            if "role" in p: valid_prompts.append(p)
+                            elif "text" in p: valid_prompts.append(p["text"])
+                    elif isinstance(p, str):
+                        valid_prompts.append(p)
+                 if valid_prompts:
+                    system_prompt = random.choice(valid_prompts)
+
+            try:
+                # Generate!
+                result = await self.bot.groq.generate_script(
+                    item.title, 
+                    item.artist, 
+                    system_prompt=system_prompt, 
+                    model=groq_model,
+                    fallback_model=groq_model_fallback
                 )
+                
+                if result:
+                    # Store the script logic IMMEDIATELY
+                    if "text" in result:
+                        item.script_text = result["text"]
+                        
+                    # Return metadata votes
+                    genres = []
+                    if result.get("genre"):
+                        genres.append(result["genre"])
+                    
+                    year = None
+                    if result.get("release_date"):
+                        try:
+                            # Clean up year (sometimes "2023" or "Released 2023")
+                            import re
+                            # Find 4 digits
+                            match = re.search(r'\b(19|20)\d{2}\b', str(result["release_date"]))
+                            if match:
+                                year = int(match.group(0))
+                        except: pass
+                        
+                    return {"genres": genres, "year": year}
+                    
             except Exception as e:
-                logger.error(f"MusicBrainz fetch failed: {e}")
+                logger.error(f"Groq metadata fetch failed: {e}")
             return {"genres": [], "year": None}
 
         engine_map = {
             "spotify": fetch_spotify,
             "discogs": fetch_discogs,
-            "musicbrainz": fetch_musicbrainz
+            "musicbrainz": fetch_musicbrainz,
+            "groq": fetch_groq_metadata
         }
-
+        
+        # Add Groq to active engines if not present but 'groq' source enabled in config?
+        # Actually, user needs to enable it in 'engines' config.
+        # But for now, let's inject it if not present, as low priority?
+        # No, let's respect the config. If user wants Groq metadata, they add it to metadata_config.
+        # BUT... we want the script pre-generation to happen ALWAYS if Groq is enabled.
+        # So we should force run it even if it's not in 'engines' for metadata voting.
+        
+        # Check if Groq is already in active_engines
+        groq_in_engines = any(e[0] == "groq" for e in active_engines)
+        if not groq_in_engines:
+            # Add it as a hidden task just for script generation?
+            # Or just append it with low priority
+            active_engines.append(("groq", 999))
+            
         # Execute Parallel Requests (Consensus/Aggregation)
         tasks = []
         source_names = []
         
-        for name, _ in active_engines:
-            if name in engine_map:
                 # MUST wrap coroutines in Tasks for asyncio.wait in Python 3.11+
                 # AND to keep track of them for result mapping
                 task = asyncio.create_task(engine_map[name]())

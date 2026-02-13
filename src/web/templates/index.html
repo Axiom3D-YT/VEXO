@@ -547,21 +547,14 @@
                                     <div
                                         style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                                         <label class="form-label" style="margin: 0;">Custom Prompts</label>
-                                        <div style="display: flex; gap: 0.5rem;">
-                                            <button class="btn btn-secondary btn-sm" onclick="showPresetLoader()">Load
-                                                Preset</button>
-                                            <button class="btn btn-primary btn-sm" onclick="openAutogenerateModal()">✨
-                                                Autogenerate</button>
-                                        </div>
+                                        <button class="btn btn-primary btn-sm" onclick="openPromptEditor()">+ Add
+                                            New</button>
                                     </div>
 
                                     <div id="groq-prompts-list"
                                         style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
                                         <!-- Dynamic items with checkboxes -->
                                     </div>
-
-                                    <button class="btn btn-secondary btn-sm" onclick="addGroqPrompt()">+ Add Custom
-                                        Prompt</button>
 
                                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.75rem;">
                                         A random prompt will be selected from the <strong>enabled</strong> items below
@@ -571,6 +564,70 @@
                             </div>
                         </div>
 
+                        <!-- PROMPT EDITOR MODAL -->
+                        <div id="prompt-editor-modal" class="modal-overlay">
+                            <div class="modal" style="width: 600px; max-width: 95vw;">
+                                <div class="modal-header">
+                                    <h2 class="modal-title" id="prompt-editor-title">Edit Prompt</h2>
+                                    <button class="btn-icon" onclick="closePromptEditor()">✕</button>
+                                </div>
+                                <div class="modal-body" style="padding: 1.5rem; max-height: 70vh; overflow-y: auto;">
+                                    <input type="hidden" id="edit-prompt-index" value="-1">
+
+                                    <div class="form-group">
+                                        <label class="form-label">Name</label>
+                                        <input type="text" id="edit-prompt-name" class="form-input"
+                                            placeholder="e.g. My Custom Persona">
+                                    </div>
+
+                                    <div class="form-group" style="margin-top: 1rem;">
+                                        <label class="form-label">Role / Persona</label>
+                                        <textarea id="edit-prompt-role" class="form-input" rows="3"
+                                            placeholder="Who is the AI?"></textarea>
+                                    </div>
+
+                                    <div class="form-group" style="margin-top: 1rem;">
+                                        <label class="form-label">Task</label>
+                                        <textarea id="edit-prompt-task" class="form-input" rows="2"
+                                            placeholder="What should the AI do?"></textarea>
+                                    </div>
+
+                                    <div class="form-group" style="margin-top: 1rem;">
+                                        <label class="form-label">Strict Guidelines</label>
+                                        <textarea id="edit-prompt-guidelines" class="form-input" rows="4"
+                                            placeholder="Rules to follow..."></textarea>
+                                    </div>
+
+                                    <div class="form-group" style="margin-top: 1rem;">
+                                        <label class="form-label">Vocal Cues</label>
+                                        <input type="text" id="edit-prompt-vocal" class="form-input"
+                                            placeholder="Instructions on delivery/style">
+                                    </div>
+
+                                    <details style="margin-top: 1rem; cursor: pointer;">
+                                        <summary style="font-size: 0.9rem; color: var(--text-muted);">Advanced Options
+                                        </summary>
+                                        <div class="form-group" style="margin-top: 0.5rem;">
+                                            <label class="form-label">Max Word Count</label>
+                                            <input type="text" id="edit-prompt-words" class="form-input"
+                                                value="Keep it under 40 words.">
+                                        </div>
+                                        <div class="form-group" style="margin-top: 1rem;">
+                                            <label class="form-label">Output Format</label>
+                                            <textarea id="edit-prompt-format" class="form-input" rows="4" disabled
+                                                style="opacity: 0.7; cursor: not-allowed;"></textarea>
+                                            <div style="font-size: 0.7rem; color: var(--text-muted);">Format is locked
+                                                to ensure JSON compatibility.</div>
+                                        </div>
+                                    </details>
+                                </div>
+                                <div class="modal-footer"
+                                    style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.5rem;">
+                                    <button class="btn btn-secondary" onclick="closePromptEditor()">Cancel</button>
+                                    <button class="btn btn-primary" onclick="savePrompt()">Save Prompt</button>
+                                </div>
+                            </div>
+                        </div>
                         <!-- MODALS -->
                         <div id="preset-modal" class="modal-overlay">
                             <div class="modal" style="max-width: 500px;">

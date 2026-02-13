@@ -22,6 +22,26 @@ const API = {
 const currentGuild = signal(null);
 const currentScope = signal('global');
 let voiceChannels = [];
+let currentGroqPrompts = [];
+
+const DEFAULT_PROMPT_TEMPLATE = {
+    name: "New Prompt",
+    role: `You are a Cool, Knowledgeable Music Curator. You're not a radio DJ with a "voice"; you're that friend who always knows the perfect song for the moment. Your vibe is authentic, relaxed, and conversational.`,
+    task: "Write a short, natural intro for the specified track.",
+    word_count: "Keep it under 40 words.",
+    output_format: `Return a valid JSON object with the following keys:
+- "song": The song title (string)
+- "artist": The artist name (string)
+- "genre": The inferred genre (string)
+- "release_date": The release year (string)
+- "text": The intro script (string)`,
+    guidelines: `Natural Flow: Avoid "radio announcer" clichés. Talk like a real person.
+Connection: Focus on how the song *feels* or the specific moment it fits.
+The Reveal: Have 1/3 chance to mention the Artist and Song (naturally).
+Rhythm: Use natural pauses.`,
+    vocal_cues: "Do NOT include any stage directions or bracketed text.",
+    enabled: true
+};
 let ttsVoices = { tiktok_voices: [], gtts_voices: [] };
 const libraryData = signal([]); // Full library cache
 const libraryPage = signal(1);
@@ -1082,7 +1102,8 @@ async function loadSettingsTab() {
             const sGroqFallback = document.getElementById('setting-groq-model-fallback');
             if (sGroqFallback) sGroqFallback.value = data.groq_model_fallback || '';
 
-            renderGroqPrompts(data.groq_custom_prompts || []);
+            currentGroqPrompts = data.groq_custom_prompts || [];
+            renderGroqPrompts();
 
             // TTS Settings
             const sTtsE = document.getElementById('setting-tts-enabled');
@@ -1197,7 +1218,8 @@ async function saveServerSettings() {
             ? document.getElementById('setting-groq-model-custom').value
             : document.getElementById('setting-groq-model').value,
         groq_model_fallback: document.getElementById('setting-groq-model-fallback').value,
-        groq_custom_prompts: getGroqPrompts(),
+        groq_model_fallback: document.getElementById('setting-groq-model-fallback').value,
+        groq_custom_prompts: currentGroqPrompts,
         tts_enabled: document.getElementById('setting-tts-enabled').checked,
         tts_voice: document.getElementById('setting-tts-voice').value,
         tts_slow: document.getElementById('setting-tts-slow').checked,
@@ -1352,57 +1374,150 @@ function populateVoiceChannels(selectedId) {
         voiceChannels.map(ch => `<option value="${ch.id}" ${ch.id === String(selectedId) ? 'selected' : ''}>${ch.name}</option>`).join('');
 }
 
-function renderGroqPrompts(prompts) {
+// Global state for GROQ prompts (Defined at top)
+
+function renderGroqPrompts() {
     const list = document.getElementById('groq-prompts-list');
     if (!list) return;
 
-    // Default to one empty enabled prompt if none provided
-    if (prompts.length === 0) prompts = [{ text: '', enabled: true }];
+    list.innerHTML = currentGroqPrompts.map((p, i) => {
+        // Handle migration from old string/simple dict format
+        let name = p.name || `Custom Prompt ${i + 1}`;
+        let enabled = p.enabled !== false;
 
-    list.innerHTML = prompts.map((p, i) => {
-        const text = typeof p === 'string' ? p : (p.text || '');
-        const enabled = typeof p === 'string' ? true : (p.enabled !== false);
+        // If it's an old string prompt, we label it as legacy
+        if (typeof p === 'string' || (p.text && !p.role)) {
+            name = `(Legacy) ${name}`;
+        }
 
         return `
-            <div class="groq-prompt-item" style="display: flex; gap: 0.5rem; align-items: start; background: rgba(255,255,255,0.03); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border);">
-                <div style="display: flex; align-items: center; margin-top: 0.5rem;">
-                    <input type="checkbox" class="groq-prompt-enabled" ${enabled ? 'checked' : ''} style="transform: scale(1.2);">
+            <div class="groq-prompt-item" style="display: flex; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.03); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border);">
+                <input type="checkbox" onchange="toggleGroqPrompt(${i})" ${enabled ? 'checked' : ''} style="transform: scale(1.2); cursor: pointer;">
+                
+                <div style="flex: 1; margin-left: 0.5rem;">
+                    <div style="font-weight: 500;">${name}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;">
+                        ${p.role ? p.role.substring(0, 50) + '...' : (p.text || '').substring(0, 50) + '...'}
+                    </div>
                 </div>
-                <textarea class="form-input groq-prompt-input" rows="2" style="flex: 1; resize: vertical; min-height: 50px;" placeholder="DJ personality/prompt...">${text.replace(/"/g, '&quot;')}</textarea>
-                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                    <button class="btn btn-icon btn-sm" onclick="this.closest('.groq-prompt-item').remove()" style="color: var(--danger); font-size: 1rem;">✕</button>
+
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary btn-sm" onclick="openPromptEditor(${i})">Edit</button>
+                    <button class="btn btn-icon btn-sm" onclick="deleteGroqPrompt(${i})" style="color: var(--danger); font-size: 1rem;">✕</button>
                 </div>
             </div>
         `;
     }).join('');
 }
 
-function addGroqPrompt(text = '', enabled = true) {
-    const list = document.getElementById('groq-prompts-list');
-    if (!list) return;
-    const div = document.createElement('div');
-    div.className = 'groq-prompt-item';
-    div.style.cssText = 'display: flex; gap: 0.5rem; align-items: start; background: rgba(255,255,255,0.03); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border);';
-    div.innerHTML = `
-        <div style="display: flex; align-items: center; margin-top: 0.5rem;">
-            <input type="checkbox" class="groq-prompt-enabled" ${enabled ? 'checked' : ''} style="transform: scale(1.2);">
-        </div>
-        <textarea class="form-input groq-prompt-input" rows="2" style="flex: 1; resize: vertical; min-height: 50px;" placeholder="DJ personality/prompt...">${text.replace(/"/g, '&quot;')}</textarea>
-        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <button class="btn btn-icon btn-sm" onclick="this.closest('.groq-prompt-item').remove()" style="color: var(--danger); font-size: 1rem;">✕</button>
-        </div>
-    `;
-    list.appendChild(div);
+function toggleGroqPrompt(index) {
+    if (currentGroqPrompts[index]) {
+        currentGroqPrompts[index].enabled = !currentGroqPrompts[index].enabled;
+        // Re-render handled by checkbox visual state, but keeping data sync
+    }
 }
 
-function getGroqPrompts() {
-    return Array.from(document.querySelectorAll('.groq-prompt-item'))
-        .map(item => ({
-            text: item.querySelector('.groq-prompt-input').value.trim(),
-            enabled: item.querySelector('.groq-prompt-enabled').checked
-        }))
-        .filter(p => p.text !== '');
+function deleteGroqPrompt(index) {
+    if (confirm('Are you sure you want to delete this prompt?')) {
+        currentGroqPrompts.splice(index, 1);
+        renderGroqPrompts();
+    }
 }
+
+// EDITOR LOGIC
+function openPromptEditor(index = -1) {
+    const modal = document.getElementById('prompt-editor-modal');
+    if (!modal) return;
+
+    document.getElementById('edit-prompt-index').value = index;
+    document.getElementById('prompt-editor-title').textContent = index >= 0 ? 'Edit Prompt' : 'New Prompt';
+
+    let data;
+    if (index >= 0) {
+        data = currentGroqPrompts[index];
+        // Migration check
+        if (typeof data === 'string') {
+            // Convert string to struct
+            data = { ...DEFAULT_PROMPT_TEMPLATE, role: data, name: `Legacy ${index + 1}` };
+        } else if (data.text && !data.role) {
+            data = { ...DEFAULT_PROMPT_TEMPLATE, role: data.text, name: data.name || `Legacy ${index + 1}` };
+        }
+    } else {
+        // NEW: Populate with DEFAULTS
+        data = JSON.parse(JSON.stringify(DEFAULT_PROMPT_TEMPLATE));
+    }
+
+    document.getElementById('edit-prompt-name').value = data.name || '';
+    document.getElementById('edit-prompt-role').value = data.role || '';
+    document.getElementById('edit-prompt-task').value = data.task || '';
+    document.getElementById('edit-prompt-guidelines').value = data.guidelines || '';
+    document.getElementById('edit-prompt-vocal').value = data.vocal_cues || '';
+    document.getElementById('edit-prompt-words').value = data.word_count || '';
+    document.getElementById('edit-prompt-format').value = data.output_format || '';
+
+    modal.classList.add('active');
+}
+
+function closePromptEditor() {
+    document.getElementById('prompt-editor-modal').classList.remove('active');
+}
+
+function savePrompt() {
+    const index = parseInt(document.getElementById('edit-prompt-index').value);
+
+    const newPrompt = {
+        name: document.getElementById('edit-prompt-name').value,
+        role: document.getElementById('edit-prompt-role').value,
+        task: document.getElementById('edit-prompt-task').value,
+        guidelines: document.getElementById('edit-prompt-guidelines').value,
+        vocal_cues: document.getElementById('edit-prompt-vocal').value,
+        word_count: document.getElementById('edit-prompt-words').value,
+        output_format: document.getElementById('edit-prompt-format').value,
+        enabled: true
+    };
+
+    // Maintain enabled state if editing
+    if (index >= 0 && currentGroqPrompts[index]) {
+        newPrompt.enabled = currentGroqPrompts[index].enabled;
+        currentGroqPrompts[index] = newPrompt;
+    } else {
+        currentGroqPrompts.push(newPrompt);
+    }
+
+    renderGroqPrompts();
+    closePromptEditor();
+}
+
+// Export to window for global access
+Object.assign(window, {
+    switchTab,
+    switchScope,
+    control,
+    changeLibraryPage,
+    selectGuild,
+    leaveGuild,
+    leaveServer,
+    saveServerSettings,
+    saveSettingsTab,
+    toggleNotifications,
+    viewUser,
+    openGlobalSettings,
+    initCharts,
+    updateCharts,
+    showPresetLoader,
+    closePresetModal,
+    loadPreset,
+    openAutogenerateModal,
+    closeAutogenModal,
+    applyAutogen,
+    toggleCustomModelInput,
+    renderGroqPrompts,
+    openPromptEditor,
+    closePromptEditor,
+    savePrompt,
+    deleteGroqPrompt,
+    toggleGroqPrompt
+});
 
 // Preset and Autogen controls
 const GROQ_PRESETS = {
