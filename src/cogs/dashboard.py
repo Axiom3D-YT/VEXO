@@ -334,6 +334,8 @@ class DashboardCog(commands.Cog):
             ]
             for key in new_settings:
                 if key in data:
+                    if key == "twenty_four_seven":
+                        logger.info(f"Setting {key} to {data[key]} for guild {guild_id}")
                     await crud.set_setting(guild_id, key, data[key])
 
             music = self.bot.get_cog("MusicCog")
