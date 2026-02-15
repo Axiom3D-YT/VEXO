@@ -79,6 +79,24 @@ class YouTubeService:
             self._ydl_opts["cookiefile"] = cookies_path
         if po_token:
             self._ydl_opts["extractor_args"] = {"youtube": {"po_token": [po_token]}}
+
+    def parse_url(self, url: str) -> tuple[str, str] | None:
+        """Parse YouTube URL to (type, id)."""
+        import re
+        
+        # Video ID
+        video_pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
+        match = re.search(video_pattern, url)
+        if match:
+            return "video", match.group(1)
+            
+        # Playlist ID
+        playlist_pattern = r"(?:list=)([a-zA-Z0-9_-]+)"
+        match = re.search(playlist_pattern, url)
+        if match:
+            return "playlist", match.group(1)
+            
+        return None
             
     async def shutdown(self):
         """Shutdown the executor."""

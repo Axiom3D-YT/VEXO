@@ -525,6 +525,228 @@ class MusicCog(commands.Cog):
         embed.set_footer(text=f"Requested by {interaction.user.display_name}")
         
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @play_group.command(name="link", description="Play from a YouTube or Spotify link")
+    @app_commands.describe(url="YouTube or Spotify Link")
+    async def play_link(self, interaction: discord.Interaction, url: str):
+        """Play from a link."""
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
+
+        # Check for voice
+        if not interaction.user.voice:
+            await interaction.followup.send("❌ You need to be in a voice channel!", ephemeral=True)
+            return
+            
+        voice_channel = interaction.user.voice.channel
+        player = self.get_player(interaction.guild_id)
+        
+        # Connect
+        if not player.voice_client or not player.voice_client.is_connected():
+            try:
+                player.voice_client = await voice_channel.connect(self_deaf=True, timeout=20.0)
+            except Exception as e:
+                await interaction.followup.send(f"❌ Failed to connect: {e}", ephemeral=True)
+                return
+
+        # 1. Check YouTube
+        yt_type_id = self.youtube.parse_url(url)
+        if yt_type_id:
+            yt_type, yt_id = yt_type_id
+            
+            if yt_type == "video":
+                track = await self.youtube.get_track_info(yt_id)
+                if not track:
+                    await interaction.followup.send("❌ Could not load track info from YouTube.", ephemeral=True)
+                    return
+                # Queue it
+                await self._queue_single_track(interaction, player, track)
+                return
+                
+            elif yt_type == "playlist":
+                tracks = await self.youtube.get_playlist_tracks(yt_id)
+                if not tracks:
+                    await interaction.followup.send("❌ Could not load playlist from YouTube.", ephemeral=True)
+                    return
+                # Queue batch
+                await self._queue_batch_tracks(interaction, player, tracks, f"YouTube Playlist")
+                return
+
+        # 2. Check Spotify
+        if hasattr(self.bot, "spotify"):
+            sp_type_id = self.bot.spotify.parse_url(url)
+            if sp_type_id:
+                sp_type, sp_id = sp_type_id
+                
+                if sp_type == "track":
+                    sp_track = await self.bot.spotify.get_track(sp_id)
+                    if not sp_track:
+                        await interaction.followup.send("❌ Could not load track from Spotify.", ephemeral=True)
+                        return
+                    
+                    # Normalize to YouTube
+                    yt_track = await self.bot.normalizer.normalize_to_yt(sp_track.title, sp_track.artist)
+                    if not yt_track:
+                        await interaction.followup.send(f"❌ Could not find YouTube match for **{sp_track.title}**", ephemeral=True)
+                        return
+                        
+                    await self._queue_single_track(interaction, player, yt_track)
+                    return
+                    
+                elif sp_type == "playlist":
+                    tracks = await self.bot.spotify.get_playlist_tracks(url)
+                    if not tracks:
+                        await interaction.followup.send("❌ Could not load playlist from Spotify.", ephemeral=True)
+                        return
+                    
+                    # For playlists, we might want to resolve lazily or batch resolve
+                    # For now, let's just resolve the first one and queue the rest? 
+                    # Or just queue them all and let the player resolve one by one?
+                    # The current system relies on QueueItem having video_id.
+                    # So we MUST resolve to YT.
+                    
+                    # To avoid blocking for too long, let's limit to 50 or so, OR verify how fast normalizer is.
+                    # Normalizer does a search. 100 searches will be slow.
+                    # Strategy: Queue first 5 immediately, background processing for others? 
+                    # Or just warn user it might take a moment.
+                    
+                    await interaction.followup.send(f"⏳ Processing {len(tracks)} tracks from Spotify playlist... this may take a moment.", ephemeral=True)
+                    
+                    resolved_tracks = []
+                    # Limit to 50 for now to prevent timeouts
+                    for t in tracks[:50]:
+                        yt = await self.bot.normalizer.normalize_to_yt(t.title, t.artist)
+                        if yt:
+                            resolved_tracks.append(yt)
+                    
+                    if not resolved_tracks:
+                        await interaction.followup.send("❌ Could not resolve any tracks from playlist.", ephemeral=True)
+                        return
+
+                    await self._queue_batch_tracks(interaction, player, resolved_tracks, "Spotify Playlist")
+                    return
+
+        await interaction.followup.send("❌ Invalid or unsupported link.", ephemeral=True)
+
+    async def _queue_single_track(self, interaction, player, track):
+        """Helper to queue a single track."""
+        # Database persistence
+        song_db_id = None
+        if hasattr(self.bot, "db") and self.bot.db:
+            try:
+                from src.database.crud import SongCRUD, UserCRUD, LibraryCRUD, GuildCRUD
+                user_crud = UserCRUD(self.bot.db)
+                song_crud = SongCRUD(self.bot.db)
+                lib_crud = LibraryCRUD(self.bot.db)
+                guild_crud = GuildCRUD(self.bot.db)
+                
+                # Check Duration
+                max_duration = await guild_crud.get_setting(interaction.guild_id, "max_song_duration")
+                if max_duration:
+                    try:
+                        max_seconds = int(max_duration) * 60
+                        if max_seconds > 0 and track.duration_seconds and track.duration_seconds > max_seconds:
+                            await interaction.followup.send(f"❌ Song is too long! (Limit: {max_duration} mins)", ephemeral=True)
+                            return
+                    except: pass
+                
+                await user_crud.get_or_create(interaction.user.id, interaction.user.name)
+                song = await song_crud.get_or_create_by_yt_id(
+                    canonical_yt_id=track.video_id,
+                    title=track.title,
+                    artist_name=track.artist,
+                    duration_seconds=track.duration_seconds,
+                    release_year=track.year,
+                    album=track.album
+                )
+                song_db_id = song["id"]
+                await lib_crud.add_to_library(interaction.user.id, song_db_id, "request")
+            except Exception as e:
+                logger.error(f"DB Error: {e}")
+
+        item = QueueItem(
+            video_id=track.video_id,
+            title=track.title,
+            artist=track.artist,
+            requester_id=interaction.user.id,
+            discovery_source="user_request",
+            song_db_id=song_db_id,
+            duration_seconds=track.duration_seconds,
+            year=track.year
+        )
+        
+        player._queue_counter += 1
+        player.queue.put_nowait((0, player._queue_counter, item))
+        player.last_activity = datetime.now(UTC)
+        player.text_channel_id = interaction.channel_id
+        
+        if not player.is_playing:
+            asyncio.create_task(self._play_loop(player))
+            
+        embed = discord.Embed(
+            title="🎵 Added to Queue",
+            description=f"**{track.title}**\nby {track.artist}",
+            color=discord.Color.green()
+        )
+        if url := getattr(track, 'thumbnail_url', None):
+             embed.set_thumbnail(url=url)
+             
+        embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def _queue_batch_tracks(self, interaction, player, tracks, source_name):
+        """Helper to queue multiple tracks."""
+        count = 0
+        from src.database.crud import SongCRUD, UserCRUD, LibraryCRUD
+        
+        for track in tracks:
+            song_db_id = None
+            if hasattr(self.bot, "db") and self.bot.db:
+                try:
+                    song_crud = SongCRUD(self.bot.db)
+                    user_crud = UserCRUD(self.bot.db)
+                    lib_crud = LibraryCRUD(self.bot.db)
+                     
+                    await user_crud.get_or_create(interaction.user.id, interaction.user.name)
+                    song = await song_crud.get_or_create_by_yt_id(
+                        canonical_yt_id=track.video_id,
+                        title=track.title,
+                        artist_name=track.artist,
+                        duration_seconds=track.duration_seconds,
+                        release_year=track.year
+                    )
+                    song_db_id = song["id"]
+                    await lib_crud.add_to_library(interaction.user.id, song_db_id, "request")
+                except: pass
+            
+            item = QueueItem(
+                video_id=track.video_id,
+                title=track.title,
+                artist=track.artist,
+                requester_id=interaction.user.id,
+                discovery_source="user_request",
+                discovery_reason=source_name,
+                song_db_id=song_db_id,
+                duration_seconds=track.duration_seconds,
+                year=track.year
+            )
+            player._queue_counter += 1
+            player.queue.put_nowait((0, player._queue_counter, item))
+            count += 1
+            
+        player.last_activity = datetime.now(UTC)
+        player.text_channel_id = interaction.channel_id
+        
+        if not player.is_playing:
+            asyncio.create_task(self._play_loop(player))
+
+        embed = discord.Embed(
+            title=f"🎵 {source_name} Queued",
+            description=f"Added **{count}** tracks from link.",
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed, ephemeral=True)
     
     @play_group.command(name="any", description="Start playing with discovery mode")
     async def play_any(self, interaction: discord.Interaction):

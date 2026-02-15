@@ -67,6 +67,45 @@ class SpotifyService:
         )
     
     @retry_with_backoff(retries=3, initial_backoff=1)
+    async def get_track(self, track_id: str) -> SpotifyTrack | None:
+        """Get track info by ID."""
+        loop = asyncio.get_event_loop()
+        try:
+            track = await loop.run_in_executor(
+                None,
+                partial(self.sp.track, track_id)
+            )
+            
+            return SpotifyTrack(
+                spotify_id=track["id"],
+                title=track["name"],
+                artist=track["artists"][0]["name"],
+                artist_id=track["artists"][0]["id"],
+                album=track["album"]["name"],
+                release_year=int(track["album"]["release_date"][:4]) if track["album"]["release_date"] else None,
+                duration_seconds=track["duration_ms"] // 1000,
+                popularity=track["popularity"],
+            )
+        except Exception as e:
+            logger.error(f"Spotify get track error: {e}")
+            return None
+
+    def parse_url(self, url: str) -> tuple[str, str] | None:
+        """Parse Spotify URL to (type, id)."""
+        if "open.spotify.com" not in url:
+            return None
+        
+        try:
+            # https://open.spotify.com/track/123...
+            path = url.split("open.spotify.com/")[1].split("?")[0]
+            parts = path.split("/")
+            if len(parts) >= 2:
+                return parts[0], parts[1]
+        except Exception:
+            pass
+        return None
+
+    @retry_with_backoff(retries=3, initial_backoff=1)
     async def search_track(self, query: str) -> SpotifyTrack | None:
         """Search for a track."""
         loop = asyncio.get_event_loop()
@@ -232,7 +271,7 @@ class SpotifyService:
             
             results = await loop.run_in_executor(
                 None,
-                partial(self.sp.playlist, playlist_id)
+                partial(self.sp.playlist, playlist_id, market="US")
             )
             
             tracks = []
