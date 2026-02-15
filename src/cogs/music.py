@@ -305,6 +305,51 @@ class MusicCog(commands.Cog):
             return
         
         track = results[0]
+        
+        # --- VERIFICATION LOGIC ---
+        import difflib
+        # Calculate similarity (0.0 to 1.0)
+        # Compare query vs Title AND query vs "Artist Title"
+        # We take the max of the two
+        s1 = difflib.SequenceMatcher(None, query.lower(), track.title.lower()).ratio()
+        s2 = difflib.SequenceMatcher(None, query.lower(), f"{track.artist} {track.title}".lower()).ratio()
+        similarity = max(s1, s2)
+        
+        # Threshold (adjustable) - 0.4 is a reasonable "matches loosely but maybe not exact" cutoff
+        if similarity < 0.4:
+            view = SearchVerificationView(self, player, query, track)
+            msg = await interaction.followup.send(
+                f"⚠️ **Low Confidence Match**\n"
+                f"I found **{track.title}** by **{track.artist}**\n"
+                f"Is this what you wanted?",
+                embed=None, # Clean look
+                view=view,
+                ephemeral=True
+            )
+            
+            await view.wait()
+            
+            # Logic after wait
+            if view.value is None:
+                # Timeout
+                await interaction.followup.send("❌ Request timed out.", ephemeral=True)
+                return
+            elif view.value is False:
+                # Cancel
+                await interaction.followup.send("❌ Request cancelled.", ephemeral=True)
+                return
+            elif view.value == "LINK":
+                # User clicked "Enter Link", modal handled it
+                # We return here because _process_link was called in modal's submit
+                return
+            
+            # If view.value is True (Confirm), proceed below
+            try:
+                # Cleanup verification message if possible
+                await msg.delete()
+            except: pass
+            
+        # --- END VERIFICATION LOGIC ---
     
         # Ensure duration is present
         if track.duration_seconds is None:
@@ -549,6 +594,10 @@ class MusicCog(commands.Cog):
                 await interaction.followup.send(f"❌ Failed to connect: {e}", ephemeral=True)
                 return
 
+        await self._process_link(interaction, player, url)
+
+    async def _process_link(self, interaction: discord.Interaction, player: GuildPlayer, url: str):
+        """Process a link and queue track(s)."""
         # 1. Check YouTube
         yt_type_id = self.youtube.parse_url(url)
         if yt_type_id:
@@ -598,17 +647,6 @@ class MusicCog(commands.Cog):
                     if not tracks:
                         await interaction.followup.send("❌ Could not load playlist from Spotify.", ephemeral=True)
                         return
-                    
-                    # For playlists, we might want to resolve lazily or batch resolve
-                    # For now, let's just resolve the first one and queue the rest? 
-                    # Or just queue them all and let the player resolve one by one?
-                    # The current system relies on QueueItem having video_id.
-                    # So we MUST resolve to YT.
-                    
-                    # To avoid blocking for too long, let's limit to 50 or so, OR verify how fast normalizer is.
-                    # Normalizer does a search. 100 searches will be slow.
-                    # Strategy: Queue first 5 immediately, background processing for others? 
-                    # Or just warn user it might take a moment.
                     
                     await interaction.followup.send(f"⏳ Processing {len(tracks)} tracks from Spotify playlist... this may take a moment.", ephemeral=True)
                     
